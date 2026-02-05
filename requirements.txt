@@ -1,0 +1,44 @@
+# sRNA-seq Analysis WebTool - Streamlit Cloud Compatible
+# Install with: pip install -r requirements.txt
+
+# Core Framework
+streamlit>=1.28.0
+streamlit-option-menu>=0.3.6
+
+# Data Processing
+pandas>=2.0.0
+numpy>=1.24.0
+scipy>=1.10.0
+
+# Visualization
+plotly>=5.15.0
+kaleido==0.2.1
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# Statistics
+statsmodels>=0.14.0
+scikit-learn>=1.3.0
+
+# Bioinformatics
+biopython>=1.81
+cutadapt>=4.0  # Adapter trimming
+requests>=2.28.0  # API calls for target prediction
+pysam>=0.21.0  # BAM file handling (required for isomiR analysis)
+
+# DE Analysis (Python alternative to R DESeq2)
+pydeseq2>=0.4.0
+anndata>=0.10.0
+
+# Enrichment Analysis
+gprofiler-official>=1.0.0
+
+# File Handling
+openpyxl>=3.1.0
+xlsxwriter>=3.1.0
+
+# Utilities
+tqdm>=4.65.0
+loguru>=0.7.0
+pyyaml>=6.0
+jinja2>=3.1.0

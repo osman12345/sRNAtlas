@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <defs>
+    <linearGradient id="globeGrad4" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#42A5F5"/>
+      <stop offset="100%" style="stop-color:#1976D2"/>
+    </linearGradient>
+    <linearGradient id="rnaGrad4" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#66BB6A"/>
+      <stop offset="100%" style="stop-color:#43A047"/>
+    </linearGradient>
+  </defs>
+  <!-- Globe - Clean blue -->
+  <circle cx="50" cy="50" r="36" fill="url(#globeGrad4)"/>
+  <!-- Simple grid lines -->
+  <ellipse cx="50" cy="50" rx="36" ry="14" fill="none" stroke="#fff" stroke-width="1.2" opacity="0.35"/>
+  <ellipse cx="50" cy="50" rx="14" ry="36" fill="none" stroke="#fff" stroke-width="1.2" opacity="0.35"/>
+  <!-- RNA double helix wrapping - simplified -->
+  <path d="M 12 58 Q 8 45, 18 32 Q 32 16, 50 14 Q 68 12, 82 28 Q 92 42, 88 58"
+        fill="none" stroke="url(#rnaGrad4)" stroke-width="5" stroke-linecap="round"/>
+  <!-- Hairpin loop -->
+  <path d="M 50 14 Q 50 4, 60 10" fill="none" stroke="#66BB6A" stroke-width="4" stroke-linecap="round"/>
+  <!-- Minimal nucleotides - just 4 representing ACGU -->
+  <circle cx="15" cy="50" r="4" fill="#EF5350"/>
+  <circle cx="30" cy="26" r="4" fill="#FFCA28"/>
+  <circle cx="70" cy="18" r="4" fill="#26A69A"/>
+  <circle cx="88" cy="45" r="4" fill="#AB47BC"/>
+</svg>

@@ -1,0 +1,3 @@
+"""
+sRNAtlas Test Suite
+"""

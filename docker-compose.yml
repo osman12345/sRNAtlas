@@ -1,0 +1,43 @@
+# =============================================================================
+# Docker Compose for sRNAtlas
+# Small RNA-seq Analysis Platform
+# =============================================================================
+# Usage: docker-compose up -d
+
+version: '3.8'
+
+services:
+  srnatlas:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: srnatlas:latest
+    container_name: srnatlas
+    ports:
+      - "8501:8501"
+    volumes:
+      # Mount local data directory for input files
+      - ./data:/app/data
+      # Mount local results directory for outputs
+      - ./results:/app/results
+      # Mount jobs directory for processing
+      - ./jobs:/app/jobs
+    environment:
+      - STREAMLIT_SERVER_PORT=8501
+      - STREAMLIT_SERVER_ADDRESS=0.0.0.0
+      - STREAMLIT_SERVER_HEADLESS=true
+      - STREAMLIT_SERVER_MAX_UPLOAD_SIZE=500
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    # Resource limits (adjust based on your needs)
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 1G
