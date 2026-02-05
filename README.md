@@ -33,7 +33,7 @@
 
 ## Overview
 
-**sRNAtlas** is a powerful, user-friendly web application for comprehensive small RNA sequencing (sRNA-seq) data analysis. Built with Streamlit, it provides an intuitive interface for researchers to process raw sequencing data through quality control, alignment, quantification, differential expression analysis, and functional enrichment—all without requiring command-line expertise.
+**sRNAtlas** is a powerful, user-friendly application for comprehensive small RNA sequencing (sRNA-seq) data analysis. Built with Streamlit, it provides an intuitive interface for researchers to process raw sequencing data through quality control, alignment, quantification, differential expression analysis, and functional enrichment—all without requiring command-line expertise.
 
 ### Why sRNAtlas?
 
@@ -136,7 +136,7 @@ pip install -r requirements.txt
 
 ```bash
 # Clone and setup
-git clone https://github.com/YOUR_USERNAME/sRNAtlas.git
+git clone https://github.com/osman12345/sRNAtlas.git
 cd sRNAtlas
 
 # Create virtual environment
@@ -446,7 +446,7 @@ Contributions are welcome! Please read our contributing guidelines before submit
 
 ```bash
 # Clone and setup
-git clone https://github.com/YOUR_USERNAME/sRNAtlas.git
+git clone https://github.com/osman12345/sRNAtlas.git
 cd sRNAtlas
 
 # Create dev environment
@@ -480,7 +480,7 @@ python -m pytest -v
 - [x] Unit test framework
 - [x] Docker containerization
 - [ ] Windows standalone installer
-- [ ] Cloud deployment (Streamlit Cloud)
+- [ ] Cloud deployment 
 - [ ] API endpoints
 - [ ] Batch job scheduler
 - [ ] Enhanced visualization suite
@@ -493,10 +493,10 @@ If you use sRNAtlas in your research, please cite:
 
 ```bibtex
 @software{sRNAtlas2025,
-  author = {Your Name},
+  author = {Ayman Osman},
   title = {sRNAtlas: A Comprehensive Platform for Small RNA-seq Analysis},
-  year = {2025},
-  url = {https://github.com/YOUR_USERNAME/sRNAtlas},
+  year = {2026},
+  url = {https://github.com/osman12345/sRNAtlas},
   version = {BETA}
 }
 ```
