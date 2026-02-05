@@ -492,7 +492,7 @@ python -m pytest -v
 If you use sRNAtlas in your research, please cite:
 
 ```bibtex
-@software{sRNAtlas2025,
+@software{sRNAtlas,
   author = {Ayman Osman},
   title = {sRNAtlas: A Comprehensive Platform for Small RNA-seq Analysis},
   year = {2026},
