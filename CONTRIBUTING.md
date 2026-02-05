@@ -38,12 +38,12 @@ We are committed to providing a welcoming and inclusive environment. Please:
 1. Fork the repository on GitHub
 2. Clone your fork:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/sRNAtlas.git
+   git clone https://github.com/osman12345/sRNAtlas.git
    cd sRNAtlas
    ```
 3. Add upstream remote:
    ```bash
-   git remote add upstream https://github.com/ORIGINAL_OWNER/sRNAtlas.git
+   git remote add upstream https://github.com/osman12345/sRNAtlas.git
    ```
 
 ---
@@ -84,7 +84,7 @@ We are committed to providing a welcoming and inclusive environment. Please:
 
 ```bash
 # Clone repository
-git clone https://github.com/YOUR_USERNAME/sRNAtlas.git
+git clone https://github.com/osman12345/sRNAtlas.git
 cd sRNAtlas
 
 # Create conda environment
