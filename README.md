@@ -497,7 +497,7 @@ If you use sRNAtlas in your research, please cite:
   title = {sRNAtlas: A Comprehensive Platform for Small RNA-seq Analysis},
   year = {2026},
   url = {https://github.com/osman12345/sRNAtlas},
-  version = {BETA}
+  version = {v0.1.0}
 }
 ```
 
