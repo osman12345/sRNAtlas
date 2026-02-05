@@ -118,7 +118,7 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/YOUR_USERNAME/sRNAtlas.git
+git clone https://github.com/osman12345/sRNAtlas.git
 cd sRNAtlas
 
 # Create conda environment
