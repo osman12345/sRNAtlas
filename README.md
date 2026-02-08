@@ -19,7 +19,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.9+-blue.svg" alt="Python">
   <img src="https://img.shields.io/badge/streamlit-1.28+-red.svg" alt="Streamlit">
-  <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License">
+  <a href="https://www.gnu.org/licenses/agpl-3.0"><img src="https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg" alt="License: AGPL-3.0-or-later"></a>
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg" alt="Platform">
   <img src="https://img.shields.io/badge/version-BETA-orange.svg" alt="Version">
 </p>
@@ -28,6 +28,20 @@
   <img src="https://img.shields.io/badge/tests-51%20passed-brightgreen.svg" alt="Tests">
   <img src="https://img.shields.io/badge/coverage-85%25-yellowgreen.svg" alt="Coverage">
 </p>
+
+---
+
+## About
+
+sRNAtlas is an open-source bioinformatics platform designed to democratize small RNA sequencing analysis. It provides researchers—regardless of computational expertise—with a complete, reproducible pipeline for analyzing miRNAs, siRNAs, piRNAs, and other small non-coding RNAs.
+
+The platform integrates established bioinformatics tools (Bowtie, Samtools, Cutadapt, pyDESeq2) into a cohesive workflow, accessible through an intuitive web interface built with Streamlit. From raw FASTQ files to differential expression results and pathway enrichment, sRNAtlas handles the entire analysis pipeline while maintaining full transparency and reproducibility.
+
+**Key principles:**
+- **Accessibility**: No command-line expertise required
+- **Transparency**: All parameters visible and adjustable
+- **Reproducibility**: Consistent, version-controlled analysis
+- **Open source**: Free to use, modify, and distribute under AGPL-3.0-or-later
 
 ---
 
@@ -505,7 +519,9 @@ If you use sRNAtlas in your research, please cite:
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the **GNU Affero General Public License v3.0 or later** (AGPL-3.0-or-later).
+
+See the [LICENSE](LICENSE) file for details, or read the full license at: https://www.gnu.org/licenses/agpl-3.0.html
 
 ---
 
