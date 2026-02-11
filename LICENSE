@@ -11,7 +11,7 @@ Permission is hereby granted, free of charge, to individuals and institutions to
 2. Commercial use  
 2.1. Any use of the Software by or for a for‑profit entity, or in connection with a product or service that is offered for a fee, constitutes commercial use and is not permitted under this license.  
 2.2. Commercial use requires a separate written agreement (a “Commercial License”) with the copyright holder.  
-2.3. For commercial licensing inquiries regarding EpiNexus, contact: <your email / website>.
+2.3. For commercial licensing inquiries regarding sRNAtlas, contact the contributor.
 
 3. Redistribution  
 3.1. Redistribution of the Software, with or without modification, is permitted for non‑commercial academic purposes, provided that:  
@@ -20,7 +20,7 @@ Permission is hereby granted, free of charge, to individuals and institutions to
 3.2. You may not sublicense, relicense, or distribute the Software under terms that permit commercial use without a Commercial License from the copyright holder.
 
 4. Third‑party software  
-4.1. The Software may interface with, invoke, or require separate installation of third‑party tools and libraries (including but not limited to bedtools, samtools, BWA, Bowtie2, MACS2, Bismark, MethylDackel, and various Python packages).  
+4.1. The Software may interface with, invoke, or require separate installation of third‑party tools and libraries (including but not limited to bedtools, samtools, cutadapt, Bowtie, pydeseq2, gprofiler, openpyxl, and various Python packages).  
 4.2. Such third‑party components are not covered by this license and are licensed to you under their respective licenses by their respective copyright holders.  
 4.3. You are solely responsible for complying with all applicable third‑party licenses.
 
