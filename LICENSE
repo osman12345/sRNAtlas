@@ -1,17 +1,31 @@
-sRNAtlas - Small RNA-seq Analysis WebTool
-Copyright (C) 2026 sRNAtlas Contributors
+Copyright (c) 2026 Ayman Osman
 
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+All rights reserved.
 
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
+Permission is hereby granted, free of charge, to individuals and institutions to use, reproduce, and modify this software (sRNAtlas) for non‑commercial academic research and teaching purposes only, subject to the following conditions:
 
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
+1. Non‑commercial use  
+1.1. “Non‑commercial” means use that is not intended for or directed toward commercial advantage or monetary compensation.  
+1.2. Use by non‑profit academic institutions in the course of research, teaching, and academic collaboration is deemed non‑commercial.
 
-SPDX-License-Identifier: AGPL-3.0-or-later
+2. Commercial use  
+2.1. Any use of the Software by or for a for‑profit entity, or in connection with a product or service that is offered for a fee, constitutes commercial use and is not permitted under this license.  
+2.2. Commercial use requires a separate written agreement (a “Commercial License”) with the copyright holder.  
+2.3. For commercial licensing inquiries regarding EpiNexus, contact: <your email / website>.
+
+3. Redistribution  
+3.1. Redistribution of the Software, with or without modification, is permitted for non‑commercial academic purposes, provided that:  
+   (a) this license notice is included in all copies or substantial portions of the Software; and  
+   (b) any redistribution is made under the terms of this same license or terms that are no less restrictive for commercial use.  
+3.2. You may not sublicense, relicense, or distribute the Software under terms that permit commercial use without a Commercial License from the copyright holder.
+
+4. Third‑party software  
+4.1. The Software may interface with, invoke, or require separate installation of third‑party tools and libraries (including but not limited to bedtools, samtools, BWA, Bowtie2, MACS2, Bismark, MethylDackel, and various Python packages).  
+4.2. Such third‑party components are not covered by this license and are licensed to you under their respective licenses by their respective copyright holders.  
+4.3. You are solely responsible for complying with all applicable third‑party licenses.
+
+5. No warranty  
+THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON‑INFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+6. Governing law  
+This license shall be governed by and construed in accordance with the laws of Sweden, without regard to its conflict‑of‑law principles.
