@@ -89,8 +89,8 @@ The platform integrates established bioinformatics tools (Bowtie, Samtools, Cuta
 | **📈 Counting** | Quantification | Feature counting, count matrix generation |
 | **🧬 DE Analysis** | Differential expression | pyDESeq2, volcano plots, heatmaps, PCA |
 | **🔍 Novel miRNA** | Discovery | Identify unannotated small RNAs |
-| **🧫 isomiR** | Variant analysis | Detect miRNA isoforms and modifications |
-| **🎯 Targets** | Target prediction | miRNA target gene identification |
+| **🧫 isomiR** | Variant analysis | Detect isoforms, differential usage, arm switching |
+| **🎯 Targets** | Target prediction | psRNATarget (plants), miRanda (animals) |
 | **🧬 GO/Pathway** | Enrichment | Gene Ontology, KEGG pathway analysis |
 | **⚡ Batch** | Automation | Full pipeline batch processing |
 | **📋 Reports** | Export | HTML reports, figure export |
@@ -114,9 +114,20 @@ The platform integrates established bioinformatics tools (Bowtie, Samtools, Cuta
 
 - **🔬 Novel miRNA Discovery**: Identify unannotated small RNAs from unaligned reads
 - **🧫 isomiR Analysis**: Detect 5'/3' variants, SNPs, and non-templated additions
+- **↔️ Arm Switching Detection**: Identify 5p/3p dominance changes between conditions
+- **🔄 Differential isomiR Usage**: Compare isomiR ratios across experimental groups
 - **📊 Multi-group Comparison**: ANOVA for >2 conditions with pairwise comparisons
 - **🔥 Cluster Analysis**: Hierarchical clustering with interactive heatmaps
 - **📈 Interactive Plots**: Zoom, pan, and export publication-ready figures
+
+### New in v1.4.0
+
+- **⚡ Performance Caching**: Streamlit caching for faster repeat analyses
+- **🎯 QC Scorecard**: Traffic-light quality assessment with outlier detection
+- **🔢 Multi-mapper Modes**: Unique, fractional, and primary alignment counting
+- **🐍 miRanda Integration**: Animal miRNA target prediction
+- **📋 Provenance Tracking**: YAML/JSON export for full reproducibility
+- **🔍 Multi-sample QC Overlays**: PCA-based sample clustering and outlier detection
 
 ---
 
@@ -410,6 +421,11 @@ sRNAtlas/
 │   ├── file_handlers.py     # File I/O utilities
 │   ├── plotting.py          # Visualization functions
 │   ├── cluster_analysis.py  # Clustering utilities
+│   ├── caching.py           # Streamlit caching helpers
+│   ├── error_handling.py    # Error classification & diagnostics
+│   ├── qc_scorecard.py      # QC scoring with thresholds
+│   ├── provenance.py        # Reproducibility tracking
+│   ├── miranda.py           # miRanda target prediction
 │   └── ...
 ├── config/
 │   └── settings.py          # Configuration
@@ -493,11 +509,17 @@ python -m pytest -v
 - [x] Cluster analysis
 - [x] Unit test framework
 - [x] Docker containerization
+- [x] Performance caching (@st.cache_data)
+- [x] QC Scorecard with traffic-light flags
+- [x] Multi-mapper counting modes
+- [x] miRanda target prediction (animals)
+- [x] Provenance tracking (YAML/JSON)
+- [x] isomiR differential usage & arm switching
+- [x] Multi-sample QC overlays with outlier detection
 - [ ] Windows standalone installer
-- [ ] Cloud deployment 
+- [ ] Cloud deployment
 - [ ] API endpoints
 - [ ] Batch job scheduler
-- [ ] Enhanced visualization suite
 
 ---
 

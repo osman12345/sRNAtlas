@@ -24,9 +24,13 @@ sRNAtlas is a web-based platform for comprehensive small RNA sequencing (sRNA-se
 - **Adapter trimming**: Cutadapt integration with common presets
 - **Optimized alignment**: Bowtie v1 for short read mapping
 - **Robust statistics**: pyDESeq2 for differential expression
-- **Target prediction**: miRNA target identification
+- **Target prediction**: psRNATarget (plants), miRanda (animals)
 - **Batch processing**: Automate full pipeline runs
 - **Project management**: Save and restore analysis sessions
+- **QC Scorecard**: Traffic-light quality assessment with outlier detection
+- **Provenance tracking**: Full reproducibility with YAML/JSON export
+- **isomiR analysis**: Differential usage and arm switching detection
+- **Performance caching**: Fast repeat analyses with Streamlit caching
 
 ### Supported RNA Types
 
@@ -173,13 +177,32 @@ Bowtie alignment: Configure mismatch parameters, multi-mapping options, output B
 Alignment quality: Mapping statistics, length distributions, 5' nucleotide bias, RNA composition.
 
 ### Counting Module
-Read quantification: Per-feature counting, multi-mapper handling, count matrix export.
+Read quantification: Per-feature counting, count matrix export.
+
+**Multi-mapper Counting Modes:**
+- **All alignments**: Count every alignment (default)
+- **Unique only**: Count only reads with NH=1
+- **Fractional**: Weight each alignment by 1/n (where n = number of alignments)
+- **Primary only**: Count only primary alignments (SAM flag)
 
 ### DE Analysis Module
 Differential expression: Sample metadata input, pyDESeq2 analysis, visualization.
 
 ### Target Prediction Module
-miRNA targets: psRNATarget integration, local seed matching.
+miRNA targets with multiple algorithms:
+
+**For Plants:**
+- **psRNATarget** (API): Well-established plant target prediction
+- **Local Seed Matching**: Fast algorithm based on seed complementarity
+
+**For Animals:**
+- **miRanda**: Thermodynamics-based algorithm with score/energy thresholds
+- **Local Seed Matching**: Fallback when miRanda not installed
+
+**Parameters:**
+- Score threshold (miRanda): Minimum alignment score (default: 140)
+- Energy threshold (miRanda): Maximum free energy (default: -20 kcal/mol)
+- Strict seed pairing: Require perfect seed complementarity
 
 ### GO/Pathway Module
 Functional enrichment: GO term analysis, KEGG pathway enrichment.
@@ -189,6 +212,50 @@ Pipeline automation: Configure full pipeline, process multiple samples.
 
 ### Reports Module
 Generate reports: HTML summaries, figure export, ZIP archives.
+
+**Provenance Tracking Tab:**
+- Records all pipeline parameters and tool versions
+- Tracks file checksums (MD5) for reproducibility
+- Exports as YAML or JSON format
+- Shows Python package versions
+- Automatically tracks each analysis step
+
+### isomiR Module (Advanced)
+
+**Differential Usage Tab:**
+Compare isomiR ratios between conditions to identify processing changes.
+- Define sample groups (from metadata or manually)
+- Statistical testing with FDR correction
+- Visualization of top differential isomiRs
+
+**Arm Switching Tab:**
+Detect changes in 5p/3p arm dominance between conditions.
+- Automatic detection of 5p/3p miRNA pairs
+- T-test on log-transformed ratios
+- Identifies statistically significant arm switches
+
+### QC Scorecard
+
+Traffic-light quality assessment for each sample:
+
+| Status | Meaning |
+|--------|---------|
+| ✅ OK | Metric within acceptable range |
+| ⚠️ WARNING | Metric approaching threshold |
+| ❌ CRITICAL | Metric outside acceptable range |
+
+**Default Thresholds:**
+| Metric | Warning | Critical |
+|--------|---------|----------|
+| Total Reads | < 1M | < 100K |
+| Mean Quality | < 28 | < 20 |
+| Alignment Rate | < 50% | < 20% |
+| rRNA % | > 10% | > 30% |
+
+**Multi-sample Outlier Detection:**
+- MAD (Median Absolute Deviation) based detection
+- PCA clustering for batch effect visualization
+- Overlay distribution plots
 
 ---
 
@@ -233,4 +300,33 @@ sRNAtlas: A Comprehensive Platform for Small RNA-seq Analysis
 
 ---
 
-*sRNAtlas v1.3.0*
+## FAQ
+
+### Q: Why is my analysis slow the first time but fast on repeat?
+**A:** sRNAtlas uses Streamlit caching (`@st.cache_data`) to store results of heavy computations. The first run calculates everything; subsequent runs with the same inputs use cached results.
+
+### Q: How do I interpret the QC Scorecard colors?
+**A:**
+- ✅ Green (OK): Your sample passes quality thresholds
+- ⚠️ Yellow (WARNING): Approaching thresholds, review recommended
+- ❌ Red (CRITICAL): Below acceptable thresholds, investigate before proceeding
+
+### Q: What's the difference between multi-mapper counting modes?
+**A:**
+- **All**: Every alignment counted (may inflate counts for multi-mappers)
+- **Unique**: Only reads mapping to one location (most conservative)
+- **Fractional**: Each alignment gets 1/n weight (balanced approach)
+- **Primary**: Only the best alignment per read
+
+### Q: How do I export my analysis for reproducibility?
+**A:** Go to Reports → Provenance tab → Download as YAML or JSON. This includes all parameters, tool versions, and file checksums.
+
+### Q: miRanda is not installed. How do I add it?
+**A:** Install via Conda: `conda install -c bioconda miranda`. The tool will auto-detect miRanda when available.
+
+### Q: What is arm switching?
+**A:** When the dominant mature miRNA from a precursor changes between conditions (e.g., 5p-dominant in control, 3p-dominant in treatment). This can indicate altered miRNA processing.
+
+---
+
+*sRNAtlas v1.4.0*

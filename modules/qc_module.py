@@ -11,7 +11,7 @@ import tempfile
 import json
 import os
 from typing import List, Dict, Optional, Tuple
-from collections import Counter
+from collections import Counter, defaultdict
 
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -22,11 +22,26 @@ from utils.plotting import (
     plot_quality_distribution,
     plot_rna_type_distribution
 )
+from utils.caching import hash_file, hash_dataframe
+from utils.qc_scorecard import (
+    QCStatus,
+    QCMetric,
+    SampleScorecard,
+    QC_THRESHOLDS,
+    evaluate_metric,
+    classify_size_distribution,
+    classify_plant_sirna,
+    generate_sample_scorecard,
+    scorecard_to_dataframe,
+    get_status_emoji,
+    get_status_color
+)
 
 
 def analyze_fastq_basic(fastq_file: Path, max_reads: int = 100000) -> Dict:
     """
     Analyze FASTQ file with basic Python (no external tools needed)
+    This is a wrapper that handles caching via file hash.
 
     Args:
         fastq_file: Path to FASTQ file
@@ -35,8 +50,16 @@ def analyze_fastq_basic(fastq_file: Path, max_reads: int = 100000) -> Dict:
     Returns:
         Dictionary with QC metrics
     """
+    file_hash = hash_file(fastq_file)
+    return _analyze_fastq_basic_cached(file_hash, str(fastq_file), max_reads)
+
+
+@st.cache_data(show_spinner=False, ttl=3600)
+def _analyze_fastq_basic_cached(_file_hash: str, fastq_file_path: str, max_reads: int = 100000) -> Dict:
+    """Cached implementation of FASTQ analysis"""
     import gzip
 
+    fastq_file = Path(fastq_file_path)
     lengths = []
     qualities = []
     gc_contents = []
@@ -360,7 +383,7 @@ def check_rrna_contamination(
     count_matrix: pd.DataFrame
 ) -> Dict:
     """
-    Check for rRNA contamination in the data
+    Check for rRNA contamination in the data (cached wrapper)
 
     Args:
         annotations: DataFrame with RNA annotations
@@ -369,6 +392,19 @@ def check_rrna_contamination(
     Returns:
         Dictionary with rRNA contamination analysis
     """
+    ann_hash = hash_dataframe(annotations)
+    count_hash = hash_dataframe(count_matrix)
+    return _check_rrna_contamination_cached(ann_hash, count_hash, annotations, count_matrix)
+
+
+@st.cache_data(show_spinner=False, ttl=3600)
+def _check_rrna_contamination_cached(
+    _ann_hash: str,
+    _count_hash: str,
+    annotations: pd.DataFrame,
+    count_matrix: pd.DataFrame
+) -> Dict:
+    """Cached implementation of rRNA contamination check"""
     if 'RNA_category' not in annotations.columns:
         return {'error': 'No RNA_category column in annotations'}
 
@@ -551,6 +587,201 @@ def run_comprehensive_qc(files, file_names, files_are_paths=False):
     st.rerun()
 
 
+def render_qc_scorecard():
+    """Render QC Scorecard with traffic-light status indicators"""
+    qc_results = st.session_state.get('qc_results')
+    if not qc_results:
+        return
+
+    analysis = qc_results.get('analysis', {})
+    contamination = qc_results.get('contamination', {})
+
+    # Check if we're analyzing plant data
+    is_plant = st.session_state.get('is_plant_data', False)
+
+    # Generate scorecards for all samples
+    scorecards = []
+
+    for sample_name, result in analysis.items():
+        if result.get('status') != 'success':
+            continue
+
+        # Get contamination results for this sample
+        contam_result = contamination.get(sample_name, {})
+
+        # Build QC results dict for scorecard
+        qc_data = {
+            'total_reads': result.get('total_reads', 0),
+            'mean_quality': result.get('mean_quality', 0),
+            'lengths': result.get('lengths', []),
+            'length_distribution': result.get('length_distribution', {})
+        }
+
+        # Generate the scorecard
+        # Use 'or {}' pattern to handle both missing keys and None values
+        alignment_data = (st.session_state.get('alignment_results') or {}).get(sample_name)
+
+        scorecard = generate_sample_scorecard(
+            sample_name=sample_name,
+            qc_results=qc_data,
+            trim_results=None,  # Not available at this stage
+            alignment_results=alignment_data,
+            contamination_results=contam_result if contam_result.get('status') == 'success' else None,
+            is_plant=is_plant
+        )
+        scorecards.append(scorecard)
+
+    if not scorecards:
+        return
+
+    # === Render Scorecard UI ===
+    st.subheader("🎯 QC Scorecard Summary")
+
+    # Overall status summary
+    status_counts = {
+        QCStatus.OK: sum(1 for sc in scorecards if sc.overall_status == QCStatus.OK),
+        QCStatus.WARNING: sum(1 for sc in scorecards if sc.overall_status == QCStatus.WARNING),
+        QCStatus.CRITICAL: sum(1 for sc in scorecards if sc.overall_status == QCStatus.CRITICAL)
+    }
+
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total Samples", len(scorecards))
+    with col2:
+        st.metric("✅ Passed", status_counts[QCStatus.OK],
+                 delta_color="normal" if status_counts[QCStatus.OK] == len(scorecards) else "off")
+    with col3:
+        st.metric("⚠️ Warnings", status_counts[QCStatus.WARNING],
+                 delta_color="off" if status_counts[QCStatus.WARNING] > 0 else "normal")
+    with col4:
+        st.metric("❌ Critical", status_counts[QCStatus.CRITICAL],
+                 delta_color="inverse" if status_counts[QCStatus.CRITICAL] > 0 else "normal")
+
+    # Detailed scorecard table
+    st.markdown("#### Sample Status Overview")
+
+    # Create styled table
+    scorecard_data = []
+    for sc in scorecards:
+        row = {
+            'Sample': sc.sample_name,
+            'Status': f"{get_status_emoji(sc.overall_status)} {sc.overall_status.value.upper()}"
+        }
+
+        # Add key metrics with status
+        for metric in sc.metrics:
+            metric_emoji = get_status_emoji(metric.status)
+
+            if metric.name == 'total_reads':
+                row['Reads'] = f"{metric_emoji} {metric.value:,.0f}"
+            elif metric.name == 'mean_quality':
+                row['Quality'] = f"{metric_emoji} {metric.value:.1f}"
+            elif metric.name == 'adapter_pct':
+                row['Adapters'] = f"{metric_emoji} {metric.value:.1f}%"
+            elif metric.name == 'size_pattern':
+                row['Pattern'] = f"{metric_emoji} {metric.unit}"
+            elif metric.name == 'alignment_rate':
+                row['Aligned'] = f"{metric_emoji} {metric.value:.1f}%"
+
+        scorecard_data.append(row)
+
+    if scorecard_data:
+        scorecard_df = pd.DataFrame(scorecard_data)
+        st.dataframe(scorecard_df, width="stretch", hide_index=True)
+
+    # Expandable detailed view per sample
+    st.markdown("#### Detailed Sample Scorecards")
+
+    for sc in scorecards:
+        status_emoji = get_status_emoji(sc.overall_status)
+        status_color = get_status_color(sc.overall_status)
+
+        with st.expander(f"{status_emoji} **{sc.sample_name}** - {sc.summary}"):
+            # Metrics grid
+            st.markdown("**Metrics:**")
+
+            # Display metrics in columns
+            metric_cols = st.columns(3)
+
+            for i, metric in enumerate(sc.metrics):
+                col_idx = i % 3
+                with metric_cols[col_idx]:
+                    metric_emoji = get_status_emoji(metric.status)
+
+                    if metric.unit in ['%', 'reads', 'Phred']:
+                        # Numeric metric
+                        value_str = f"{metric.value:,.1f} {metric.unit}" if metric.unit else f"{metric.value:,.1f}"
+                    else:
+                        # Pattern/categorical metric
+                        value_str = metric.unit
+
+                    st.markdown(f"""
+                    **{metric_emoji} {metric.name.replace('_', ' ').title()}**
+                    {value_str}
+                    *{metric.description}*
+                    """)
+
+            # Thresholds info
+            if any(m.threshold_warning for m in sc.metrics):
+                with st.popover("📊 Threshold Details"):
+                    st.markdown("**QC Thresholds Used:**")
+                    for metric in sc.metrics:
+                        if metric.threshold_warning or metric.threshold_critical:
+                            direction = QC_THRESHOLDS.get(metric.name, {}).get('direction', 'min')
+                            if direction == 'min':
+                                st.markdown(f"- **{metric.name}**: ⚠️ < {metric.threshold_warning}, ❌ < {metric.threshold_critical}")
+                            else:
+                                st.markdown(f"- **{metric.name}**: ⚠️ > {metric.threshold_warning}, ❌ > {metric.threshold_critical}")
+
+            # Recommendations
+            if sc.recommendations:
+                st.markdown("**Recommendations:**")
+                for rec in sc.recommendations:
+                    if "No issues" in rec:
+                        st.success(f"✓ {rec}")
+                    else:
+                        st.warning(f"→ {rec}")
+
+    # Option to view/customize thresholds
+    with st.expander("⚙️ QC Threshold Settings"):
+        st.markdown("""
+        **Current QC Thresholds:**
+
+        These thresholds determine the traffic-light status for each metric.
+        """)
+
+        threshold_data = []
+        for metric_name, thresholds in QC_THRESHOLDS.items():
+            threshold_data.append({
+                'Metric': metric_name.replace('_', ' ').title(),
+                'Warning': thresholds.get('warning', '-'),
+                'Critical': thresholds.get('critical', '-'),
+                'Direction': '↑ Higher is better' if thresholds.get('direction') == 'min' else '↓ Lower is better'
+            })
+
+        st.dataframe(pd.DataFrame(threshold_data), width="stretch", hide_index=True)
+
+        # Plant data toggle
+        st.checkbox(
+            "Plant Data Mode (enables 21nt/24nt classification)",
+            key="is_plant_data",
+            help="Enable plant-specific siRNA classification (21nt miRNA/ta-siRNA vs 24nt hc-siRNA)"
+        )
+
+    # Download scorecard
+    if scorecards:
+        scorecard_df_full = scorecard_to_dataframe(scorecards)
+        csv = scorecard_df_full.to_csv(index=False)
+        st.download_button(
+            "📥 Download Full Scorecard",
+            csv,
+            "qc_scorecard.csv",
+            "text/csv"
+        )
+
+    st.divider()
+
+
 def render_qc_results_section():
     """Render all QC results on a single page"""
     qc_results = st.session_state.get('qc_results')
@@ -560,6 +791,13 @@ def render_qc_results_section():
     analysis = qc_results.get('analysis', {})
     contamination = qc_results.get('contamination', {})
     all_lengths = qc_results.get('all_lengths', [])
+
+    # === SECTION 0: QC Scorecard (Traffic Light Summary) ===
+    render_qc_scorecard()
+
+    # === SECTION 0.5: Multi-Sample QC Overlay (collapsible) ===
+    with st.expander("🔍 Multi-Sample QC Overlay & Outlier Detection", expanded=False):
+        render_multi_sample_qc_overlay()
 
     # === SECTION 1: Summary Statistics ===
     st.subheader("📈 Read Statistics Summary")
@@ -1222,7 +1460,7 @@ def render_size_distribution():
 
 def analyze_fastq_contamination(fastq_file: Path, max_reads: int = 50000) -> Dict:
     """
-    Analyze FASTQ file for potential contamination indicators
+    Analyze FASTQ file for potential contamination indicators (cached wrapper)
 
     Args:
         fastq_file: Path to FASTQ file
@@ -1231,8 +1469,17 @@ def analyze_fastq_contamination(fastq_file: Path, max_reads: int = 50000) -> Dic
     Returns:
         Dictionary with contamination metrics
     """
+    file_hash = hash_file(fastq_file)
+    return _analyze_fastq_contamination_cached(file_hash, str(fastq_file), max_reads)
+
+
+@st.cache_data(show_spinner=False, ttl=3600)
+def _analyze_fastq_contamination_cached(_file_hash: str, fastq_file_path: str, max_reads: int = 50000) -> Dict:
+    """Cached implementation of contamination analysis"""
     import gzip
     from collections import Counter
+
+    fastq_file = Path(fastq_file_path)
 
     # Common adapter sequences (first 12bp) for multiple platforms
     adapters = {
@@ -1550,7 +1797,7 @@ def render_contamination_check():
 
 def analyze_bam_file(bam_file: Path, max_reads: int = 100000) -> Dict:
     """
-    Analyze BAM file for post-alignment QC metrics
+    Analyze BAM file for post-alignment QC metrics (cached wrapper)
 
     Args:
         bam_file: Path to BAM file
@@ -1559,8 +1806,16 @@ def analyze_bam_file(bam_file: Path, max_reads: int = 100000) -> Dict:
     Returns:
         Dictionary with alignment QC metrics
     """
+    file_hash = hash_file(bam_file)
+    return _analyze_bam_file_cached(file_hash, str(bam_file), max_reads)
+
+
+@st.cache_data(show_spinner=False, ttl=3600)
+def _analyze_bam_file_cached(_file_hash: str, bam_file_path: str, max_reads: int = 100000) -> Dict:
+    """Cached implementation of BAM analysis"""
     import subprocess
 
+    bam_file = Path(bam_file_path)
     result = {
         'status': 'success',
         'total_reads': 0,
@@ -2224,3 +2479,356 @@ def render_pre_post_comparison():
         "pre_post_comparison.csv",
         "text/csv"
     )
+
+
+def render_multi_sample_qc_overlay():
+    """Render multi-sample QC overlays with outlier detection"""
+    st.subheader("🔍 Multi-Sample QC Overlay & Outlier Detection")
+
+    st.markdown("""
+    Compare QC metrics across all samples simultaneously to identify outliers
+    and batch effects. Outliers are detected using the Median Absolute Deviation (MAD)
+    method, which is robust to non-normal distributions.
+    """)
+
+    # Check for QC data
+    qc_results = st.session_state.get('qc_results')
+    if not qc_results or 'analysis' not in qc_results:
+        st.warning("⚠️ Run QC analysis first to enable multi-sample comparison.")
+        return
+
+    analysis = qc_results['analysis']
+    successful = {k: v for k, v in analysis.items() if v.get('status') == 'success'}
+
+    if len(successful) < 3:
+        st.info("ℹ️ Need at least 3 samples for meaningful outlier detection.")
+
+    # Build metrics DataFrame
+    metrics_data = []
+    for sample_name, result in successful.items():
+        metrics_data.append({
+            'Sample': sample_name,
+            'Total Reads': result.get('total_reads', 0),
+            'Mean Length': result.get('mean_length', 0),
+            'Mean Quality': result.get('mean_quality', 0),
+            'GC %': result.get('mean_gc', 0),
+            'Length Std': result.get('std_length', 0)
+        })
+
+    metrics_df = pd.DataFrame(metrics_data)
+
+    if len(metrics_df) == 0:
+        st.warning("No QC data available")
+        return
+
+    # Outlier detection settings
+    st.markdown("#### Outlier Detection Settings")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        mad_threshold = st.slider(
+            "MAD Threshold",
+            1.0, 5.0, 3.0, 0.5,
+            help="Samples > threshold * MAD from median are flagged as outliers"
+        )
+
+    with col2:
+        metrics_to_check = st.multiselect(
+            "Metrics to check for outliers",
+            options=['Total Reads', 'Mean Length', 'Mean Quality', 'GC %'],
+            default=['Total Reads', 'Mean Quality']
+        )
+
+    # Detect outliers
+    outlier_results = detect_qc_outliers(metrics_df, metrics_to_check, mad_threshold)
+
+    # Display outlier summary
+    st.divider()
+    st.markdown("#### 🚨 Outlier Detection Results")
+
+    n_outliers = len(outlier_results['outlier_samples'])
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Total Samples", len(metrics_df))
+    with col2:
+        st.metric("Outlier Samples", n_outliers,
+                 delta="Flag" if n_outliers > 0 else "OK",
+                 delta_color="inverse" if n_outliers > 0 else "normal")
+    with col3:
+        st.metric("Pass Rate", f"{100 * (len(metrics_df) - n_outliers) / len(metrics_df):.0f}%")
+
+    # Show outliers
+    if outlier_results['outlier_samples']:
+        st.warning(f"⚠️ **Outlier samples detected:** {', '.join(outlier_results['outlier_samples'])}")
+
+        # Show which metrics flagged each sample
+        st.markdown("**Outlier details:**")
+        for sample, flags in outlier_results['outlier_details'].items():
+            if flags:
+                st.markdown(f"- **{sample}**: {', '.join(flags)}")
+    else:
+        st.success("✅ No outliers detected with current threshold")
+
+    # Visualizations
+    st.divider()
+    st.markdown("#### 📊 Multi-Sample QC Overlays")
+
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+
+    # Create overlay plots
+    fig = make_subplots(
+        rows=2, cols=2,
+        subplot_titles=('Total Reads', 'Mean Quality', 'Mean Length', 'GC Content')
+    )
+
+    outlier_samples = set(outlier_results['outlier_samples'])
+
+    # Color samples based on outlier status
+    colors = ['#e74c3c' if s in outlier_samples else '#3498db' for s in metrics_df['Sample']]
+
+    # Total Reads
+    fig.add_trace(
+        go.Bar(x=metrics_df['Sample'], y=metrics_df['Total Reads'],
+               marker_color=colors, showlegend=False),
+        row=1, col=1
+    )
+    # Add median line
+    median_reads = metrics_df['Total Reads'].median()
+    fig.add_hline(y=median_reads, line_dash="dash", line_color="gray",
+                  annotation_text="Median", row=1, col=1)
+
+    # Mean Quality
+    fig.add_trace(
+        go.Bar(x=metrics_df['Sample'], y=metrics_df['Mean Quality'],
+               marker_color=colors, showlegend=False),
+        row=1, col=2
+    )
+    median_qual = metrics_df['Mean Quality'].median()
+    fig.add_hline(y=median_qual, line_dash="dash", line_color="gray", row=1, col=2)
+
+    # Mean Length
+    fig.add_trace(
+        go.Bar(x=metrics_df['Sample'], y=metrics_df['Mean Length'],
+               marker_color=colors, showlegend=False),
+        row=2, col=1
+    )
+
+    # GC %
+    fig.add_trace(
+        go.Bar(x=metrics_df['Sample'], y=metrics_df['GC %'],
+               marker_color=colors, showlegend=False),
+        row=2, col=2
+    )
+
+    fig.update_layout(
+        title="Multi-Sample QC Metrics (Red = Outliers)",
+        height=600,
+        showlegend=False
+    )
+    fig.update_xaxes(tickangle=45)
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Distribution plots with overlays
+    st.markdown("#### 📈 Sample Distribution Overlays")
+
+    # Read length distribution overlay
+    all_lengths = qc_results.get('all_lengths', [])
+    if all_lengths:
+        st.markdown("##### Read Length Distribution (All Samples)")
+
+        # Create per-sample length distributions
+        fig_len = go.Figure()
+
+        for sample_name, result in successful.items():
+            if result.get('lengths'):
+                sample_lengths = result['lengths'][:5000]  # Limit for performance
+
+                # Determine color based on outlier status
+                color = '#e74c3c' if sample_name in outlier_samples else '#3498db'
+                opacity = 0.7 if sample_name in outlier_samples else 0.3
+
+                fig_len.add_trace(go.Histogram(
+                    x=sample_lengths,
+                    name=sample_name,
+                    opacity=opacity,
+                    marker_color=color,
+                    nbinsx=50
+                ))
+
+        fig_len.update_layout(
+            title="Read Length Distribution Overlay",
+            xaxis_title="Read Length (nt)",
+            yaxis_title="Count",
+            barmode='overlay',
+            height=400
+        )
+
+        st.plotly_chart(fig_len, use_container_width=True)
+
+    # Quality distribution overlay
+    st.markdown("##### Quality Score Distribution (All Samples)")
+
+    fig_qual = go.Figure()
+
+    for sample_name, result in successful.items():
+        if result.get('qualities'):
+            sample_quals = result['qualities'][:5000]
+
+            color = '#e74c3c' if sample_name in outlier_samples else '#2ecc71'
+            opacity = 0.7 if sample_name in outlier_samples else 0.3
+
+            fig_qual.add_trace(go.Histogram(
+                x=sample_quals,
+                name=sample_name,
+                opacity=opacity,
+                marker_color=color,
+                nbinsx=40
+            ))
+
+    fig_qual.update_layout(
+        title="Quality Score Distribution Overlay",
+        xaxis_title="Phred Quality Score",
+        yaxis_title="Count",
+        barmode='overlay',
+        height=400
+    )
+
+    st.plotly_chart(fig_qual, use_container_width=True)
+
+    # PCA plot for batch effect detection
+    st.markdown("#### 🎯 Sample Clustering (PCA)")
+
+    if len(metrics_df) >= 3:
+        from sklearn.preprocessing import StandardScaler
+        from sklearn.decomposition import PCA
+
+        try:
+            # Prepare data for PCA
+            numeric_cols = ['Total Reads', 'Mean Length', 'Mean Quality', 'GC %']
+            X = metrics_df[numeric_cols].values
+
+            # Standardize
+            scaler = StandardScaler()
+            X_scaled = scaler.fit_transform(X)
+
+            # PCA
+            pca = PCA(n_components=2)
+            X_pca = pca.fit_transform(X_scaled)
+
+            pca_df = pd.DataFrame({
+                'Sample': metrics_df['Sample'],
+                'PC1': X_pca[:, 0],
+                'PC2': X_pca[:, 1],
+                'Status': ['Outlier' if s in outlier_samples else 'Normal'
+                           for s in metrics_df['Sample']]
+            })
+
+            import plotly.express as px
+
+            fig_pca = px.scatter(
+                pca_df,
+                x='PC1', y='PC2',
+                color='Status',
+                color_discrete_map={'Normal': '#3498db', 'Outlier': '#e74c3c'},
+                text='Sample',
+                title=f"PCA of QC Metrics (PC1: {pca.explained_variance_ratio_[0]*100:.1f}%, PC2: {pca.explained_variance_ratio_[1]*100:.1f}%)"
+            )
+            fig_pca.update_traces(textposition='top center')
+            fig_pca.update_layout(height=500)
+
+            st.plotly_chart(fig_pca, use_container_width=True)
+
+            st.caption("Samples clustering together have similar QC profiles. Outliers may indicate technical issues or batch effects.")
+
+        except ImportError:
+            st.info("Install scikit-learn for PCA visualization: pip install scikit-learn")
+        except Exception as e:
+            st.warning(f"Could not generate PCA plot: {e}")
+
+    # Download outlier report
+    st.divider()
+    col1, col2 = st.columns(2)
+
+    with col1:
+        # Full metrics table with outlier flags
+        metrics_df['Outlier'] = metrics_df['Sample'].apply(
+            lambda x: '⚠️ Yes' if x in outlier_samples else '✅ No'
+        )
+        csv = metrics_df.to_csv(index=False)
+        st.download_button(
+            "📥 Download QC Metrics with Outlier Flags",
+            csv,
+            "qc_metrics_outliers.csv",
+            "text/csv"
+        )
+
+    with col2:
+        # Outlier details
+        if outlier_results['outlier_details']:
+            details = "\n".join([
+                f"{sample}: {', '.join(flags)}"
+                for sample, flags in outlier_results['outlier_details'].items()
+                if flags
+            ])
+            st.download_button(
+                "📥 Download Outlier Details",
+                details,
+                "outlier_details.txt",
+                "text/plain"
+            )
+
+
+def detect_qc_outliers(
+    metrics_df: pd.DataFrame,
+    metrics_to_check: List[str],
+    mad_threshold: float = 3.0
+) -> Dict:
+    """
+    Detect outlier samples using Median Absolute Deviation (MAD)
+
+    Args:
+        metrics_df: DataFrame with sample QC metrics
+        metrics_to_check: List of metric columns to check
+        mad_threshold: Number of MADs from median to flag as outlier
+
+    Returns:
+        Dictionary with outlier detection results
+    """
+    outlier_samples = set()
+    outlier_details = defaultdict(list)
+
+    for metric in metrics_to_check:
+        if metric not in metrics_df.columns:
+            continue
+
+        values = metrics_df[metric].values
+
+        # Calculate median and MAD
+        median = np.median(values)
+        mad = np.median(np.abs(values - median))
+
+        # Handle case where MAD is 0 (all values same)
+        if mad == 0:
+            mad = np.std(values)  # Fall back to std dev
+            if mad == 0:
+                continue
+
+        # Calculate modified Z-scores
+        modified_z = 0.6745 * (values - median) / mad
+
+        # Flag outliers
+        for i, (sample, z_score) in enumerate(zip(metrics_df['Sample'], modified_z)):
+            if abs(z_score) > mad_threshold:
+                outlier_samples.add(sample)
+                direction = "high" if z_score > 0 else "low"
+                outlier_details[sample].append(f"{metric} ({direction})")
+
+    return {
+        'outlier_samples': list(outlier_samples),
+        'outlier_details': dict(outlier_details),
+        'mad_threshold': mad_threshold
+    }

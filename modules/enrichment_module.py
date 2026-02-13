@@ -36,7 +36,7 @@ def run_gprofiler_enrichment(
     background: Optional[List[str]] = None
 ) -> Dict:
     """
-    Run enrichment analysis using g:Profiler API (no R required)
+    Run enrichment analysis using g:Profiler API (cached wrapper)
 
     Args:
         genes: List of gene IDs
@@ -47,6 +47,21 @@ def run_gprofiler_enrichment(
     Returns:
         Dictionary with enrichment results
     """
+    # Convert to hashable types for caching
+    genes_tuple = tuple(sorted(genes))
+    sources_tuple = tuple(sorted(sources))
+    bg_tuple = tuple(sorted(background)) if background else None
+    return _run_gprofiler_enrichment_cached(genes_tuple, organism, sources_tuple, bg_tuple)
+
+
+@st.cache_data(show_spinner="Running g:Profiler enrichment...", ttl=7200)
+def _run_gprofiler_enrichment_cached(
+    genes_tuple: tuple,
+    organism: str,
+    sources_tuple: tuple,
+    background_tuple: Optional[tuple]
+) -> Dict:
+    """Cached implementation of g:Profiler enrichment"""
     try:
         from gprofiler import GProfiler
     except ImportError:
@@ -54,6 +69,10 @@ def run_gprofiler_enrichment(
             'status': 'error',
             'error': 'gprofiler-official not installed. Install with: pip install gprofiler-official'
         }
+
+    genes = list(genes_tuple)
+    sources = list(sources_tuple)
+    background = list(background_tuple) if background_tuple else None
 
     try:
         gp = GProfiler(return_dataframe=True)

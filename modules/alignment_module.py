@@ -16,6 +16,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config import config
+from utils.error_handling import ErrorClassifier, format_error_for_streamlit
 
 
 def check_bowtie_installed() -> bool:
@@ -450,23 +451,32 @@ def render_alignment_page():
         if bowtie_ok:
             st.success("✅ Bowtie installed")
         else:
-            st.error("❌ Bowtie not found. Please install it first.")
+            st.error("❌ Bowtie not found")
+            diag = ErrorClassifier.classify_tool_error('bowtie')
+            with st.expander("Installation instructions"):
+                st.markdown(format_error_for_streamlit(diag))
 
     with col2:
         samtools_ok = check_samtools_installed()
         if samtools_ok:
             st.success("✅ Samtools installed")
         else:
-            st.error("❌ Samtools not found. Please install it first.")
+            st.error("❌ Samtools not found")
+            diag = ErrorClassifier.classify_tool_error('samtools')
+            with st.expander("Installation instructions"):
+                st.markdown(format_error_for_streamlit(diag))
 
     if not (bowtie_ok and samtools_ok):
         st.warning("Please install the required tools to use the alignment module.")
         st.code("""
-# Install with conda
+# Install with conda (recommended)
 conda install -c bioconda bowtie samtools
 
 # Or with apt (Ubuntu/Debian)
 sudo apt-get install bowtie samtools
+
+# Or with Homebrew (macOS)
+brew install bowtie samtools
         """)
         return
 

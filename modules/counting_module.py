@@ -17,6 +17,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from config import config
 from utils.file_handlers import parse_fasta_annotations, categorize_rna
 from utils.plotting import plot_rna_type_distribution
+from utils.caching import hash_file
+from utils.error_handling import ErrorClassifier, format_error_for_streamlit
 
 
 def validate_bam_before_counting(bam_file: Path) -> Tuple[bool, str]:
@@ -84,27 +86,67 @@ def validate_bam_before_counting(bam_file: Path) -> Tuple[bool, str]:
     return True, ""
 
 
-def count_reads_from_bam(bam_file: Path, min_mapq: int = 0) -> Tuple[Dict, Dict]:
+# Counting mode constants
+COUNTING_MODE_ALL = "all"  # Count all alignments (original behavior)
+COUNTING_MODE_UNIQUE = "unique_only"  # Only unique mappers (MAPQ > threshold)
+COUNTING_MODE_FRACTIONAL = "fractional"  # Fractional counts (1/n for n alignments)
+COUNTING_MODE_PRIMARY = "primary_only"  # Only primary alignments (SAM flag)
+
+COUNTING_MODES = {
+    COUNTING_MODE_ALL: "All alignments (count multi-mappers fully)",
+    COUNTING_MODE_UNIQUE: "Unique only (ignore multi-mappers)",
+    COUNTING_MODE_FRACTIONAL: "Fractional (1/n weight for n alignments)",
+    COUNTING_MODE_PRIMARY: "Primary only (use SAM primary flag)"
+}
+
+
+def count_reads_from_bam(
+    bam_file: Path,
+    min_mapq: int = 0,
+    counting_mode: str = COUNTING_MODE_ALL
+) -> Tuple[Dict, Dict]:
     """
-    Extract read counts for each RNA from BAM file
+    Extract read counts for each RNA from BAM file (cached wrapper)
 
     Args:
         bam_file: Path to sorted BAM file
         min_mapq: Minimum mapping quality (0 allows multi-mappers)
+        counting_mode: How to handle multi-mappers:
+            - "all": Count all alignments (inflates multi-mapper counts)
+            - "unique_only": Only count reads with MAPQ > threshold
+            - "fractional": Each read contributes 1/n to each of n alignments
+            - "primary_only": Only count primary alignments (SAM flag)
 
     Returns:
         Tuple of (counts dict, stats dict)
     """
+    file_hash = hash_file(bam_file)
+    return _count_reads_from_bam_cached(file_hash, str(bam_file), min_mapq, counting_mode)
+
+
+@st.cache_data(show_spinner=False, ttl=3600)
+def _count_reads_from_bam_cached(
+    _file_hash: str,
+    bam_file_path: str,
+    min_mapq: int = 0,
+    counting_mode: str = COUNTING_MODE_ALL
+) -> Tuple[Dict, Dict]:
+    """Cached implementation of BAM read counting with multi-mapper handling"""
     import pysam
+
+    bam_file = Path(bam_file_path)
 
     # Validate BAM file first
     is_valid, error_msg = validate_bam_before_counting(bam_file)
     if not is_valid:
         return None, {'error': error_msg}
 
-    counts = defaultdict(int)
+    counts = defaultdict(float)  # Use float for fractional counting
     total_reads = 0
     mapped_reads = 0
+    multi_mapped_reads = 0
+    unique_reads = 0
+    filtered_reads = 0
 
     try:
         # Open BAM file - use iteration instead of fetch() to avoid index requirement
@@ -122,14 +164,54 @@ def count_reads_from_bam(bam_file: Path, min_mapq: int = 0) -> Tuple[Dict, Dict]
 
                 mapped_reads += 1
 
-                # Filter by mapping quality
-                if read.mapping_quality < min_mapq:
-                    continue
+                # Get NH tag (number of hits) if available
+                try:
+                    nh = read.get_tag('NH')
+                except KeyError:
+                    nh = 1  # Assume unique if NH tag not present
+
+                is_multi_mapper = nh > 1
+                if is_multi_mapper:
+                    multi_mapped_reads += 1
+                else:
+                    unique_reads += 1
+
+                # Apply counting mode logic
+                if counting_mode == COUNTING_MODE_UNIQUE:
+                    # Skip multi-mappers entirely
+                    if is_multi_mapper or read.mapping_quality < min_mapq:
+                        filtered_reads += 1
+                        continue
+                    weight = 1.0
+
+                elif counting_mode == COUNTING_MODE_FRACTIONAL:
+                    # Each alignment gets 1/NH weight
+                    if read.mapping_quality < min_mapq:
+                        filtered_reads += 1
+                        continue
+                    weight = 1.0 / nh
+
+                elif counting_mode == COUNTING_MODE_PRIMARY:
+                    # Only count primary alignments
+                    if read.is_secondary or read.is_supplementary:
+                        filtered_reads += 1
+                        continue
+                    if read.mapping_quality < min_mapq:
+                        filtered_reads += 1
+                        continue
+                    weight = 1.0
+
+                else:  # COUNTING_MODE_ALL (default)
+                    # Count all alignments (original behavior)
+                    if read.mapping_quality < min_mapq:
+                        filtered_reads += 1
+                        continue
+                    weight = 1.0
 
                 # Get reference name (RNA ID from FASTA)
                 if read.reference_id >= 0:
                     ref_name = bam.get_reference_name(read.reference_id)
-                    counts[ref_name] += 1
+                    counts[ref_name] += weight
 
         # Check if we got any data
         if total_reads == 0:
@@ -139,14 +221,23 @@ def count_reads_from_bam(bam_file: Path, min_mapq: int = 0) -> Tuple[Dict, Dict]
             return None, {'error': f'BAM file has {total_reads} reads but none are mapped'}
 
         if len(counts) == 0:
-            return None, {'error': f'No reads passed filters (mapped={mapped_reads}, min_mapq={min_mapq})'}
+            return None, {'error': f'No reads passed filters (mapped={mapped_reads}, min_mapq={min_mapq}, mode={counting_mode})'}
+
+        # Convert to int for non-fractional modes, keep float for fractional
+        if counting_mode != COUNTING_MODE_FRACTIONAL:
+            counts = {k: int(v) for k, v in counts.items()}
 
         stats = {
             'total_reads': total_reads,
             'mapped_reads': mapped_reads,
             'unmapped_reads': total_reads - mapped_reads,
+            'unique_reads': unique_reads,
+            'multi_mapped_reads': multi_mapped_reads,
+            'filtered_reads': filtered_reads,
             'unique_rnas': len(counts),
-            'alignment_rate': 100 * mapped_reads / total_reads if total_reads > 0 else 0
+            'alignment_rate': 100 * mapped_reads / total_reads if total_reads > 0 else 0,
+            'multi_mapping_rate': 100 * multi_mapped_reads / mapped_reads if mapped_reads > 0 else 0,
+            'counting_mode': counting_mode
         }
 
         return dict(counts), stats
@@ -166,6 +257,7 @@ def count_reads_from_bam(bam_file: Path, min_mapq: int = 0) -> Tuple[Dict, Dict]
 def process_bam_files(
     bam_files: List[Path],
     min_mapq: int = 0,
+    counting_mode: str = COUNTING_MODE_ALL,
     progress_callback=None
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
@@ -174,6 +266,7 @@ def process_bam_files(
     Args:
         bam_files: List of BAM file paths
         min_mapq: Minimum mapping quality threshold
+        counting_mode: Multi-mapper handling mode
         progress_callback: Optional callback for progress updates
 
     Returns:
@@ -189,7 +282,7 @@ def process_bam_files(
         if progress_callback:
             progress_callback(i / len(bam_files), f"Processing {sample_name}...")
 
-        counts, stats = count_reads_from_bam(bam_file, min_mapq)
+        counts, stats = count_reads_from_bam(bam_file, min_mapq, counting_mode)
 
         if counts is not None:
             all_counts[sample_name] = counts
@@ -376,12 +469,41 @@ def render_counting_input():
         has_bams = bam_files or use_alignment_bams
 
         if has_bams:
+            st.subheader("⚙️ Counting Settings")
+
+            # Counting mode selector
+            counting_mode = st.selectbox(
+                "Multi-mapper Handling",
+                options=list(COUNTING_MODES.keys()),
+                format_func=lambda x: COUNTING_MODES[x],
+                index=0,
+                help="""
+                **All alignments**: Count every alignment (inflates counts for multi-mappers - original behavior)
+
+                **Unique only**: Only count uniquely mapped reads (MAPQ > threshold)
+
+                **Fractional**: Each read contributes 1/n to each of its n alignments (recommended for miRNA families)
+
+                **Primary only**: Only count primary alignments (uses SAM flag)
+                """
+            )
+
+            # Store in session state for reports
+            st.session_state.counting_mode = counting_mode
 
             min_mapq = st.slider(
                 "Minimum Mapping Quality",
                 0, 60, config.counting.min_mapq,
-                help="0 = include multi-mappers (recommended for small RNAs)"
+                help="0 = include all alignments, higher values filter low-confidence mappings"
             )
+
+            # Show mode-specific info
+            if counting_mode == COUNTING_MODE_UNIQUE:
+                st.info("💡 **Unique mode**: Multi-mappers will be excluded. Consider increasing MAPQ threshold.")
+            elif counting_mode == COUNTING_MODE_FRACTIONAL:
+                st.info("💡 **Fractional mode**: A read mapping to 3 locations will contribute 0.33 counts to each.")
+            elif counting_mode == COUNTING_MODE_PRIMARY:
+                st.info("💡 **Primary mode**: Only the best alignment per read will be counted.")
 
             if st.button("🔢 Generate Count Matrix", type="primary"):
                 # Get BAM file paths
@@ -411,29 +533,32 @@ def render_counting_input():
                     count_matrix, sample_stats = process_bam_files(
                         bam_paths,
                         min_mapq,
+                        counting_mode,
                         progress_callback=update_progress
                     )
 
                 if count_matrix is not None and not count_matrix.empty:
                     st.session_state.count_matrix = count_matrix
                     st.session_state.sample_stats = sample_stats
+
+                    # Show mode-specific success message
+                    mode_msg = COUNTING_MODES.get(counting_mode, counting_mode)
                     st.success(f"Generated count matrix: {count_matrix.shape[0]} RNAs × {count_matrix.shape[1]} samples")
+                    st.caption(f"Counting mode: {mode_msg}")
                 else:
                     st.error("Failed to generate count matrix.")
-                    # Show individual BAM file errors
-                    st.markdown("**Possible causes:**")
-                    st.markdown("- BAM files may be corrupted or empty")
-                    st.markdown("- Re-run alignment to generate valid BAM files")
-                    st.markdown("- Check that BAM files contain aligned reads")
 
-                    # Try to show specific errors for each BAM
+                    # Try to show specific errors for each BAM with actionable diagnostics
                     st.markdown("**BAM file status:**")
                     for bam_path in bam_paths:
                         is_valid, error_msg = validate_bam_before_counting(bam_path)
                         if is_valid:
                             st.markdown(f"- ✅ {bam_path.name}: OK")
                         else:
-                            st.markdown(f"- ❌ {bam_path.name}: {error_msg}")
+                            st.markdown(f"- ❌ **{bam_path.name}**")
+                            # Get actionable error info
+                            diag_error = ErrorClassifier.classify_bam_error(error_msg, bam_path)
+                            st.markdown(format_error_for_streamlit(diag_error))
 
     else:  # Count matrix
         count_file = st.file_uploader(

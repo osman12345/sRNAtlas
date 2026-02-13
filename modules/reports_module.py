@@ -331,10 +331,11 @@ def render_reports_page():
     """Render the reports page"""
     st.header("📋 Analysis Reports")
 
-    tab1, tab2, tab3 = st.tabs([
+    tab1, tab2, tab3, tab4 = st.tabs([
         "📄 Generate Report",
         "📥 Download Data",
-        "📊 Export Figures"
+        "📊 Export Figures",
+        "📋 Provenance"
     ])
 
     with tab1:
@@ -345,6 +346,9 @@ def render_reports_page():
 
     with tab3:
         render_export_figures()
+
+    with tab4:
+        render_provenance_tab()
 
 
 def render_generate_report():
@@ -537,3 +541,69 @@ def render_export_figures():
                     if st.button("Save as SVG", key=f"svg_{comp_name}"):
                         fig.write_image(f"{comp_name}_volcano.svg")
                         st.success("Saved!")
+
+
+def render_provenance_tab():
+    """Render the provenance tracking tab"""
+    from utils.provenance import render_provenance_ui, get_python_package_versions
+
+    st.subheader("📋 Analysis Provenance")
+
+    st.markdown("""
+    Provenance tracking records all parameters, tool versions, and file checksums
+    for reproducibility. This information can be exported as YAML or JSON for
+    documentation and sharing.
+    """)
+
+    # Render the main provenance UI
+    render_provenance_ui()
+
+    # Additional system info
+    st.divider()
+    st.subheader("🔧 Environment Details")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("**Python Packages:**")
+        versions = get_python_package_versions()
+        for pkg, version in versions.items():
+            status = "✅" if version != "NOT_INSTALLED" else "❌"
+            st.caption(f"{status} {pkg}: {version}")
+
+    with col2:
+        st.markdown("**Session Info:**")
+        st.caption(f"Project: {st.session_state.get('project_name', 'None')}")
+        st.caption(f"Organism: {st.session_state.get('organism', 'None')}")
+
+        # Count completed steps
+        tracker = st.session_state.get('provenance_tracker')
+        if tracker and tracker.record:
+            st.caption(f"Pipeline Steps: {len(tracker.record.steps)}")
+            st.caption(f"Status: {tracker.record.status}")
+        else:
+            st.caption("Pipeline Steps: 0")
+            st.caption("Status: Not started")
+
+    # Quick start provenance
+    st.divider()
+    if st.session_state.get('provenance_tracker') is None or \
+       (st.session_state.provenance_tracker.record is None):
+        if st.button("🚀 Start Provenance Tracking"):
+            from utils.provenance import ProvenanceTracker
+            tracker = st.session_state.get('provenance_tracker')
+            if tracker is None:
+                tracker = ProvenanceTracker("sRNAtlas", config.version)
+                st.session_state.provenance_tracker = tracker
+
+            run_id = tracker.start_run(
+                parameters={
+                    'organism': st.session_state.get('organism'),
+                    'project_name': st.session_state.get('project_name')
+                },
+                metadata={
+                    'user_notes': 'Started from Reports module'
+                }
+            )
+            st.success(f"Started provenance tracking with ID: {run_id}")
+            st.rerun()

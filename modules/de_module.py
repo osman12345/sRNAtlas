@@ -23,8 +23,9 @@ from utils.plotting import (
 )
 
 
+@st.cache_data(show_spinner=False)
 def load_demo_dataset():
-    """Load the demo dataset for testing"""
+    """Load the demo dataset for testing (cached)"""
     demo_dir = Path(__file__).parent.parent / "data" / "demo"
 
     counts_file = demo_dir / "demo_counts.csv"

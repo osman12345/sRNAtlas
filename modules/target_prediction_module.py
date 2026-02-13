@@ -16,6 +16,13 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config import config
+from utils.miranda import (
+    check_miranda_installed,
+    run_miranda,
+    filter_miranda_results,
+    get_miranda_summary_stats,
+    get_miranda_install_instructions
+)
 
 
 # psRNATarget API endpoint
@@ -324,6 +331,7 @@ def render_target_prediction_page():
 
     **Available methods:**
     - **psRNATarget** (plants): Web API for plant miRNA target prediction
+    - **miRanda** (animals): Thermodynamics-based algorithm for animal 3' UTR targeting
     - **Local Seed Matching**: Fast local algorithm based on seed complementarity
     """)
 
@@ -501,8 +509,21 @@ def render_target_prediction():
         )
 
     else:  # Animals
-        method = "Local Seed Matching"
-        st.info("Using local seed matching algorithm for animal miRNAs")
+        # Check if miRanda is available
+        miranda_available, miranda_version = check_miranda_installed()
+
+        if miranda_available:
+            method = st.radio(
+                "Prediction Method",
+                options=["miRanda (Recommended)", "Local Seed Matching"],
+                help="miRanda is a well-established tool for animal miRNA target prediction"
+            )
+            st.success(f"✅ {miranda_version} detected")
+        else:
+            method = "Local Seed Matching"
+            st.warning("⚠️ miRanda not installed. Using local seed matching.")
+            with st.expander("📦 Install miRanda"):
+                st.markdown(get_miranda_install_instructions())
 
         species = st.selectbox(
             "Target Species",
@@ -527,11 +548,21 @@ def render_target_prediction():
     col1, col2 = st.columns(2)
 
     with col1:
-        seed_start = st.slider("Seed Start Position", 1, 5, 2)
-        seed_end = st.slider("Seed End Position", 7, 13, 8)
+        if method == "miRanda (Recommended)":
+            score_threshold = st.slider("Min Score", 100.0, 200.0, 140.0, 5.0,
+                help="Minimum alignment score (higher = stricter)")
+            energy_threshold = st.slider("Max Energy (kcal/mol)", -50.0, 0.0, -20.0, 1.0,
+                help="Maximum free energy (more negative = stronger binding)")
+        else:
+            seed_start = st.slider("Seed Start Position", 1, 5, 2)
+            seed_end = st.slider("Seed End Position", 7, 13, 8)
 
     with col2:
-        max_mismatches = st.slider("Max Seed Mismatches", 0, 5, 2)
+        if method == "miRanda (Recommended)":
+            miranda_strict = st.checkbox("Strict Seed Pairing",
+                help="Require strict complementarity in seed region")
+        else:
+            max_mismatches = st.slider("Max Seed Mismatches", 0, 5, 2)
         if method == "psRNATarget (API)":
             expectation = st.slider("Expectation Cutoff", 1.0, 10.0, 5.0, 0.5)
 
@@ -599,8 +630,47 @@ def render_target_prediction():
                 else:
                     st.error(f"Submission failed: {result.get('error')}")
 
+            elif method == "miRanda (Recommended)":
+                # miRanda prediction for animals
+                custom_transcripts = st.session_state.get('custom_transcripts')
+
+                if not custom_transcripts:
+                    st.error("miRanda requires 3' UTR sequences. Please upload a FASTA file with target UTR sequences.")
+                    return
+
+                # Format miRNA sequences as FASTA
+                mirna_fasta = ""
+                for mirna_id, seq in mirna_seqs.items():
+                    mirna_fasta += f">{mirna_id}\n{seq}\n"
+
+                st.info(f"Running miRanda: {len(mirna_seqs)} miRNAs against target UTRs...")
+
+                # Run miRanda
+                result = run_miranda(
+                    mirna_fasta=mirna_fasta,
+                    target_fasta=custom_transcripts,
+                    score_threshold=score_threshold,
+                    energy_threshold=energy_threshold,
+                    strict=miranda_strict
+                )
+
+                if result['status'] == 'success':
+                    results_df = result['results']
+                    stats = result['stats']
+
+                    st.session_state.target_results = results_df
+                    st.session_state.miranda_stats = stats
+
+                    st.success(f"✅ Found {stats['total_predictions']} target predictions!")
+                    st.info(f"📊 {stats['unique_mirnas']} miRNAs targeting {stats['unique_targets']} genes")
+                else:
+                    st.error(f"miRanda failed: {result.get('error')}")
+                    if 'install_instructions' in result:
+                        with st.expander("📦 Installation Help"):
+                            st.markdown(result['install_instructions'])
+
             else:
-                # Local prediction
+                # Local seed matching prediction
                 custom_transcripts = st.session_state.get('custom_transcripts')
 
                 if not custom_transcripts:

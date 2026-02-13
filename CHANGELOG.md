@@ -5,6 +5,62 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-02-13
+
+### Added
+- **Performance Caching** - Streamlit `@st.cache_data` integration
+  - File-based caching with hash functions for DataFrames and files
+  - Cached QC analysis, alignment stats, and enrichment queries
+  - New `utils/caching.py` module with hash utilities
+- **Improved Error Handling** - Actionable diagnostic system
+  - Error classification for BAM, alignment, DE, and tool errors
+  - Diagnostic commands suggestions
+  - New `utils/error_handling.py` module with `ErrorClassifier`
+- **Multi-mapper Counting Modes** - Flexible read quantification
+  - All alignments (default)
+  - Unique only (NH=1)
+  - Fractional counting (1/n weight)
+  - Primary alignment only
+  - UI dropdown in Counting module
+- **QC Summary Scorecard** - Traffic-light quality assessment
+  - Configurable thresholds for all QC metrics
+  - OK/WARNING/CRITICAL status indicators
+  - Size distribution pattern detection (miRNA, piRNA, tRF)
+  - Plant-specific siRNA classification (21nt vs 24nt)
+  - Downloadable scorecard reports
+  - New `utils/qc_scorecard.py` module
+- **miRanda Integration** - Animal miRNA target prediction
+  - Full miRanda wrapper with score/energy thresholds
+  - Automatic tool detection and installation guidance
+  - Result parsing and filtering
+  - New `utils/miranda.py` module
+- **Provenance Tracking** - Full reproducibility support
+  - Pipeline parameter recording
+  - Tool version tracking
+  - File checksums (MD5)
+  - YAML/JSON export
+  - Provenance tab in Reports module
+  - New `utils/provenance.py` module
+- **isomiR Enhancements** - Advanced variant analysis
+  - Differential isomiR usage between conditions
+  - Arm switching detection (5p/3p dominance changes)
+  - Statistical testing with FDR correction
+  - New tabs in isomiR module
+- **Multi-sample QC Overlays** - Outlier detection
+  - MAD-based outlier detection
+  - Distribution overlay plots
+  - PCA-based sample clustering
+  - Batch effect visualization
+  - Expandable section in QC results
+
+### Changed
+- Updated QC module with scorecard integration
+- Enhanced target prediction with miRanda option for animals
+- Reports module now includes provenance tracking tab
+- isomiR module expanded with 2 new analysis tabs
+
+---
+
 ## [1.3.0] - 2026-01-28
 
 ### Added
@@ -154,6 +210,7 @@ When releasing a new version:
 
 | Version | Date | Description |
 |---------|------|-------------|
+| 1.4.0 | 2026-02-13 | Performance caching, QC scorecard, multi-mapper modes, miRanda, provenance, isomiR enhancements, outlier detection |
 | 1.3.0 | 2026-01-28 | Adapter trimming, target prediction, database builder, batch processing, project management |
 | 1.2.0 | 2026-01-26 | Switched to Bowtie for small RNA alignment |
 | 1.1.0 | 2026-01-26 | Reference database management system |

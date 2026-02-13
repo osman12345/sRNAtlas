@@ -258,16 +258,30 @@ Requires additional tools (local installation only):
 To add full pipeline support:
 
 ```bash
-# Conda
-conda install -c bioconda bowtie samtools pysam -y
+# Conda (recommended)
+conda install -c bioconda bowtie samtools pysam cutadapt miranda -y
 
 # macOS (Homebrew)
 brew install bowtie samtools
-pip install pysam
+pip install pysam cutadapt
 
 # Linux (apt)
 sudo apt-get install bowtie samtools
-pip install pysam
+pip install pysam cutadapt
+```
+
+### Optional: miRanda for Animal Target Prediction
+
+miRanda is used for animal miRNA target prediction. If not installed, the tool falls back to local seed matching.
+
+```bash
+# Conda (recommended)
+conda install -c bioconda miranda -y
+
+# From source
+wget http://cbio.mskcc.org/microrna_data/miRanda-aug2010.tar.gz
+tar xzf miRanda-aug2010.tar.gz
+cd miRanda-3.3a && ./configure && make && sudo make install
 ```
 
 ---
@@ -330,13 +344,43 @@ Run this to verify all packages are installed:
 
 ```bash
 python -c "
-import streamlit; print(f'Streamlit: {streamlit.__version__}')
-import pydeseq2; print(f'pyDESeq2: {pydeseq2.__version__}')
-import pandas; print(f'Pandas: {pandas.__version__}')
-import plotly; print(f'Plotly: {plotly.__version__}')
-import gprofiler; print('g:Profiler: OK')
-print('All core packages installed!')
+import streamlit; print(f'✓ Streamlit: {streamlit.__version__}')
+import pandas; print(f'✓ Pandas: {pandas.__version__}')
+import numpy; print(f'✓ NumPy: {numpy.__version__}')
+import scipy; print(f'✓ SciPy: {scipy.__version__}')
+import plotly; print(f'✓ Plotly: {plotly.__version__}')
+import sklearn; print(f'✓ scikit-learn: {sklearn.__version__}')
+import Bio; print(f'✓ Biopython: {Bio.__version__}')
+import pysam; print(f'✓ pysam: {pysam.__version__}')
+import cutadapt; print(f'✓ cutadapt: {cutadapt.__version__}')
+import pydeseq2; print(f'✓ pyDESeq2: {pydeseq2.__version__}')
+import gprofiler; print('✓ g:Profiler: OK')
+import loguru; print('✓ Loguru: OK')
+import yaml; print('✓ PyYAML: OK')
+try:
+    import kaleido; print('✓ Kaleido: OK')
+except: print('⚠ Kaleido: not installed (optional for image export)')
+print('\\n✅ All packages installed!')
 "
+```
+
+### Verify External Tools (Optional)
+
+For full pipeline functionality with FASTQ processing:
+
+```bash
+# Check alignment tools
+bowtie --version
+samtools --version
+
+# Check adapter trimming
+cutadapt --version
+
+# Check miRanda (optional, for animal target prediction)
+miranda -h 2>&1 | head -1
+
+# Check pysam (Python BAM handling)
+python -c "import pysam; print(f'pysam: {pysam.__version__}')"
 ```
 
 ---

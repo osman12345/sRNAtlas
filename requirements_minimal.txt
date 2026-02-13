@@ -1,6 +1,10 @@
-# Minimal requirements for sRNA-seq Analysis WebTool
-# Use this file for easier installation
-# Install with: pip install -r requirements_minimal.txt
+# Minimal requirements for Streamlit Cloud deployment ONLY
+# Use requirements.txt for local installation (recommended)
+#
+# This file excludes packages that may fail on cloud platforms:
+# - pysam (requires htslib)
+# - cutadapt (compilation issues)
+# - kaleido (binary dependencies)
 
 # Core Framework
 streamlit>=1.28.0
@@ -13,27 +17,20 @@ scipy>=1.10.0
 
 # Visualization
 plotly>=5.15.0
-matplotlib>=3.7.0
-seaborn>=0.12.0
 
-# Statistics
-statsmodels>=0.14.0
+# Machine Learning
 scikit-learn>=1.3.0
 
-# File Handling
-openpyxl>=3.1.0
-xlsxwriter>=3.1.0
-
-# Utilities
-tqdm>=4.65.0
-loguru>=0.7.0
-pyyaml>=6.0
-
-# Bioinformatics (install separately if issues)
+# Bioinformatics
 biopython>=1.81
+requests>=2.28.0
+
+# Differential Expression
+pydeseq2>=0.4.0
 
 # Enrichment Analysis
-gprofiler-official
+gprofiler-official>=1.0.0
 
-# Python DESeq2 alternative (no R required)
-pydeseq2
+# Utilities
+loguru>=0.7.0
+pyyaml>=6.0

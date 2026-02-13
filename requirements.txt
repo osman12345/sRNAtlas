@@ -1,44 +1,61 @@
-# sRNA-seq Analysis WebTool - Streamlit Cloud Compatible
+# sRNA-seq Analysis WebTool - Complete Requirements
 # Install with: pip install -r requirements.txt
 
-# Core Framework
+# ============================================
+# CORE FRAMEWORK
+# ============================================
 streamlit>=1.28.0
 streamlit-option-menu>=0.3.6
 
-# Data Processing
+# ============================================
+# DATA PROCESSING
+# ============================================
 pandas>=2.0.0
 numpy>=1.24.0
 scipy>=1.10.0
 
-# Visualization
+# ============================================
+# VISUALIZATION
+# ============================================
 plotly>=5.15.0
-kaleido==0.2.1
-matplotlib>=3.7.0
-seaborn>=0.12.0
+kaleido==0.2.1  # High-resolution image exports (PNG, SVG, PDF)
 
-# Statistics
-statsmodels>=0.14.0
+# ============================================
+# MACHINE LEARNING / STATISTICS
+# ============================================
 scikit-learn>=1.3.0
 
-# Bioinformatics
+# ============================================
+# BIOINFORMATICS
+# ============================================
 biopython>=1.81
+pysam>=0.21.0  # BAM file handling for isomiR analysis
+requests>=2.28.0  # API calls for target prediction (psRNATarget)
 cutadapt>=4.0  # Adapter trimming
-requests>=2.28.0  # API calls for target prediction
-pysam>=0.21.0  # BAM file handling (required for isomiR analysis)
 
-# DE Analysis (Python alternative to R DESeq2)
+# ============================================
+# DIFFERENTIAL EXPRESSION
+# ============================================
 pydeseq2>=0.4.0
-anndata>=0.10.0
 
-# Enrichment Analysis
+# ============================================
+# ENRICHMENT ANALYSIS
+# ============================================
 gprofiler-official>=1.0.0
 
-# File Handling
-openpyxl>=3.1.0
-xlsxwriter>=3.1.0
+# ============================================
+# UTILITIES
+# ============================================
+loguru>=0.7.0  # Logging
+pyyaml>=6.0  # Provenance YAML export
 
-# Utilities
-tqdm>=4.65.0
-loguru>=0.7.0
-pyyaml>=6.0
-jinja2>=3.1.0
+# ============================================
+# EXTERNAL COMMAND-LINE TOOLS
+# Install separately via conda (not pip):
+#
+#   conda install -c bioconda bowtie samtools miranda -y
+#
+# - bowtie: Short read alignment (preferred for small RNA)
+# - samtools: BAM file manipulation
+# - miranda: Animal miRNA target prediction
+# ============================================

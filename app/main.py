@@ -76,6 +76,8 @@ st.markdown("""
 
 def init_session_state():
     """Initialize session state variables"""
+    from utils.provenance import ProvenanceTracker
+
     defaults = {
         # Project info
         'project_name': None,
@@ -107,6 +109,9 @@ def init_session_state():
         'counting_settings': config.counting,
         'deseq_settings': config.deseq,
         'enrichment_settings': config.enrichment,
+
+        # Provenance tracking
+        'provenance_tracker': ProvenanceTracker("sRNAtlas", __version__),
     }
 
     for key, value in defaults.items():
