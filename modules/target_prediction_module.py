@@ -297,27 +297,85 @@ def predict_targets_local(
     return pd.DataFrame(results)
 
 
-def load_mirna_from_de_results(de_results: Dict, padj_threshold: float = 0.05) -> Dict[str, str]:
+def load_mirna_from_de_results(
+    de_results: Dict,
+    padj_threshold: float = 0.05,
+    reference_sequences: Optional[Dict[str, str]] = None
+) -> Dict[str, str]:
     """
-    Extract significant miRNAs from DE results
+    Extract significant miRNAs from DE results and look up their sequences
 
     Args:
         de_results: DE results dictionary
         padj_threshold: FDR threshold
+        reference_sequences: Dictionary of {mirna_id: sequence} from reference FASTA
 
     Returns:
-        Dictionary of {mirna_id: sequence}
+        Dictionary of {mirna_id: sequence} for significant miRNAs
     """
-    # This would need to be connected to your miRNA database
-    # For now, return placeholder
+    import streamlit as st
+
+    # Get reference sequences from session state if not provided
+    if reference_sequences is None:
+        reference_sequences = st.session_state.get('reference_sequences', {})
+
+        # Also try mirbase_sequences or loaded FASTA
+        if not reference_sequences:
+            reference_sequences = st.session_state.get('mirbase_sequences', {})
+
+        # Try to build from reference_fasta if available
+        if not reference_sequences and st.session_state.get('reference_fasta'):
+            try:
+                from Bio import SeqIO
+                import io
+                fasta_content = st.session_state.get('reference_fasta')
+                if isinstance(fasta_content, str):
+                    handle = io.StringIO(fasta_content)
+                else:
+                    handle = io.StringIO(fasta_content.decode('utf-8'))
+                reference_sequences = {
+                    rec.id: str(rec.seq).upper().replace('T', 'U')
+                    for rec in SeqIO.parse(handle, "fasta")
+                }
+                # Cache for future use
+                st.session_state.reference_sequences = reference_sequences
+            except Exception as e:
+                st.warning(f"Could not parse reference FASTA: {e}")
+
     significant_mirnas = {}
+    missing_sequences = []
 
     for comparison, df in de_results.get('results', {}).items():
-        if 'padj' in df.columns:
-            sig = df[df['padj'] < padj_threshold].index.tolist()
+        padj_col = 'padj' if 'padj' in df.columns else 'global_FDR'
+        if padj_col in df.columns:
+            sig = df[df[padj_col] < padj_threshold].index.tolist()
             for mirna in sig:
-                # Would need sequence lookup here
-                significant_mirnas[mirna] = "PLACEHOLDER"
+                if mirna in significant_mirnas:
+                    continue  # Already added
+
+                # Look up sequence in reference
+                if mirna in reference_sequences:
+                    significant_mirnas[mirna] = reference_sequences[mirna]
+                else:
+                    # Try fuzzy matching (strip version suffix like .1, -5p, etc.)
+                    mirna_base = mirna.split('.')[0].split('-5p')[0].split('-3p')[0]
+                    found = False
+                    for ref_id, ref_seq in reference_sequences.items():
+                        ref_base = ref_id.split('.')[0].split('-5p')[0].split('-3p')[0]
+                        if mirna_base.lower() == ref_base.lower():
+                            significant_mirnas[mirna] = ref_seq
+                            found = True
+                            break
+                    if not found:
+                        missing_sequences.append(mirna)
+
+    # Warn about missing sequences
+    if missing_sequences:
+        st.warning(
+            f"⚠️ Could not find sequences for {len(missing_sequences)} miRNAs. "
+            f"Please load reference sequences in the Databases module.\n"
+            f"Missing: {', '.join(missing_sequences[:5])}{'...' if len(missing_sequences) > 5 else ''}"
+        )
 
     return significant_mirnas
 
@@ -480,6 +538,16 @@ def render_target_input():
 def render_target_prediction():
     """Render target prediction section"""
     st.subheader("Run Target Prediction")
+
+    # Initialize all parameter variables with defaults to avoid NameError
+    # These will be overwritten by the appropriate UI elements based on method
+    score_threshold = 140.0
+    energy_threshold = -20.0
+    miranda_strict = False
+    seed_start = 2
+    seed_end = 8
+    max_mismatches = 2
+    expectation = 5.0
 
     # Check for input
     mirna_seqs = st.session_state.get('target_mirna_seqs', {})

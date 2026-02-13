@@ -21,6 +21,7 @@ from utils.plotting import (
     plot_heatmap,
     plot_sample_correlation
 )
+from utils.error_handling import ErrorClassifier, format_error_for_streamlit
 
 
 @st.cache_data(show_spinner=False)
@@ -269,9 +270,16 @@ def run_pydeseq2_analysis(
 
     except Exception as e:
         import traceback
+        error_msg = str(e)
+
+        # Classify the error for better diagnostics
+        diag_error = ErrorClassifier.classify_de_error(error_msg)
+
         return {
             'status': 'error',
-            'error': f'{str(e)}\n{traceback.format_exc()}'
+            'error': error_msg,
+            'traceback': traceback.format_exc(),
+            'diagnostic': diag_error
         }
 
 
@@ -600,6 +608,11 @@ def render_run_de():
         else:
             progress_bar.progress(100)
             st.error(f"❌ Analysis failed: {result['error']}")
+
+            # Show diagnostic information if available
+            if 'diagnostic' in result and result['diagnostic']:
+                with st.expander("🔧 Diagnostic Information"):
+                    st.markdown(format_error_for_streamlit(result['diagnostic']))
 
 
 def render_de_results():

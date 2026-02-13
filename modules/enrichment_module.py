@@ -15,18 +15,22 @@ from config import config
 from utils.plotting import plot_enrichment_dotplot
 
 
-# Organism mapping for KEGG
-KEGG_ORGANISMS = {
-    'Arabidopsis thaliana': 'ath',
-    'Medicago truncatula': 'mtr',
-    'Oryza sativa': 'osa',
-    'Zea mays': 'zma',
-    'Glycine max': 'gmx',
-    'Homo sapiens': 'hsa',
-    'Mus musculus': 'mmu',
-    'Drosophila melanogaster': 'dme',
-    'Caenorhabditis elegans': 'cel',
+# Unified organism mapping with codes for different services
+# g:Profiler uses longer names (e.g., 'athaliana'), KEGG uses 3-letter codes (e.g., 'ath')
+SUPPORTED_ORGANISMS = {
+    'Arabidopsis thaliana': {'gprofiler': 'athaliana', 'kegg': 'ath'},
+    'Medicago truncatula': {'gprofiler': 'mtruncatula', 'kegg': 'mtr'},
+    'Oryza sativa': {'gprofiler': 'osativa', 'kegg': 'osa'},
+    'Zea mays': {'gprofiler': 'zmays', 'kegg': 'zma'},
+    'Glycine max': {'gprofiler': 'gmax', 'kegg': 'gmx'},
+    'Homo sapiens': {'gprofiler': 'hsapiens', 'kegg': 'hsa'},
+    'Mus musculus': {'gprofiler': 'mmusculus', 'kegg': 'mmu'},
+    'Drosophila melanogaster': {'gprofiler': 'dmelanogaster', 'kegg': 'dme'},
+    'Caenorhabditis elegans': {'gprofiler': 'celegans', 'kegg': 'cel'},
 }
+
+# Backwards compatibility alias
+KEGG_ORGANISMS = {k: v['kegg'] for k, v in SUPPORTED_ORGANISMS.items()}
 
 
 def run_gprofiler_enrichment(
@@ -345,19 +349,9 @@ def render_run_enrichment():
         background = st.session_state.get('enrichment_background')
 
         with st.spinner("Running enrichment analysis with g:Profiler..."):
-            # Map organism name to g:Profiler code
-            org_map = {
-                'Arabidopsis thaliana': 'athaliana',
-                'Medicago truncatula': 'mtruncatula',
-                'Homo sapiens': 'hsapiens',
-                'Mus musculus': 'mmusculus',
-                'Oryza sativa': 'osativa',
-                'Zea mays': 'zmays',
-                'Glycine max': 'gmax',
-                'Drosophila melanogaster': 'dmelanogaster',
-                'Caenorhabditis elegans': 'celegans',
-            }
-            org_code = org_map.get(organism, 'athaliana')
+            # Get g:Profiler organism code from unified mapping
+            org_info = SUPPORTED_ORGANISMS.get(organism, {})
+            org_code = org_info.get('gprofiler', 'athaliana')
 
             # Build sources list
             sources = []

@@ -117,12 +117,24 @@ def render_settings_tab():
         st.session_state.novel_prefer_u = prefer_u
         
         st.markdown("**Hairpin Structure:**")
-        check_hairpin = st.checkbox("Check for hairpin potential", value=True)
+        check_hairpin = st.checkbox(
+            "Check for hairpin potential",
+            value=False,  # Default to False since not implemented
+            disabled=True,  # Disable until ViennaRNA is integrated
+            help="Requires ViennaRNA (RNAfold) - not yet integrated"
+        )
         st.session_state.novel_check_hairpin = check_hairpin
-        
+
+        # Disclaimer about hairpin checking
+        st.caption(
+            "⚠️ **Note:** Hairpin structure prediction requires ViennaRNA (RNAfold) "
+            "which is not yet integrated. Candidates are currently filtered by "
+            "sequence criteria only (length, read count, 5' nucleotide)."
+        )
+
         if check_hairpin:
             min_mfe = st.slider(
-                "Max MFE (kcal/mol)", 
+                "Max MFE (kcal/mol)",
                 -50.0, -10.0, -20.0,
                 help="More negative = more stable hairpin"
             )
@@ -134,7 +146,7 @@ def render_settings_tab():
     - Length: {min_len}-{max_len} nt
     - Minimum reads: {min_reads}
     - 5' U preference: {'Yes' if prefer_u else 'No'}
-    - Hairpin check: {'Yes' if check_hairpin else 'No'}
+    - Hairpin check: Not available (requires ViennaRNA)
     """)
 
 
