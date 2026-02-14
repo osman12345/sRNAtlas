@@ -292,7 +292,12 @@ def process_bam_files(
         return None, None
 
     # Create count matrix
-    count_df = pd.DataFrame(all_counts).fillna(0).astype(int)
+    count_df = pd.DataFrame(all_counts).fillna(0)
+    # Only convert to int for non-fractional counting modes
+    if counting_mode != COUNTING_MODE_FRACTIONAL:
+        count_df = count_df.astype(int)
+    else:
+        count_df = count_df.round(4)  # Round fractional counts to 4 decimal places
 
     # Sort rows by total counts (most abundant first)
     count_df['_total'] = count_df.sum(axis=1)

@@ -10,7 +10,11 @@ import subprocess
 import tempfile
 from typing import List, Dict, Optional, Tuple
 from collections import Counter, defaultdict
-import pysam
+try:
+    import pysam
+    PYSAM_AVAILABLE = True
+except ImportError:
+    PYSAM_AVAILABLE = False
 
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -36,6 +40,37 @@ def analyze_bam_basic(bam_file: Path, max_reads: int = 100000) -> Dict:
     Returns:
         Dictionary with QC metrics
     """
+    if not PYSAM_AVAILABLE:
+        return {
+            'status': 'error',
+            'error': 'pysam is not installed. Install with: pip install pysam'
+        }
+
+    bam_file = Path(bam_file)
+
+    # Validate BAM file exists
+    if not bam_file.exists():
+        return {
+            'status': 'error',
+            'error': f'BAM file not found: {bam_file}'
+        }
+
+    if bam_file.stat().st_size == 0:
+        return {
+            'status': 'error',
+            'error': f'BAM file is empty: {bam_file}'
+        }
+
+    # Check for BAM index
+    bai_file = Path(f"{bam_file}.bai")
+    csi_file = bam_file.with_suffix('.bam.csi')
+    if not bai_file.exists() and not csi_file.exists():
+        return {
+            'status': 'error',
+            'error': f'BAM index not found. Run: samtools index {bam_file}',
+            'fix': f'samtools index {bam_file}'
+        }
+
     try:
         import pysam
 
@@ -96,16 +131,16 @@ def analyze_bam_basic(bam_file: Path, max_reads: int = 100000) -> Dict:
                 else:
                     stats['unique_reads'] += 1
 
-            # 5' and 3' nucleotide (important for miRNA)
+            # 5' and 3' nucleotide (important for miRNA - expect U/T enrichment at 5')
+            # pysam query_sequence returns the sequence as stored in BAM (already on + strand)
+            # For reverse strand reads, BAM stores the reverse complement
+            # So the 5' end of the ORIGINAL read is always seq[0] after pysam handles it
             seq = read.query_sequence
-            if seq:
-                if read.is_reverse:
-                    # For reverse strand, 5' is at the end
-                    stats['five_prime_nt'][seq[-1]] += 1
-                    stats['three_prime_nt'][seq[0]] += 1
-                else:
-                    stats['five_prime_nt'][seq[0]] += 1
-                    stats['three_prime_nt'][seq[-1]] += 1
+            if seq and len(seq) > 0:
+                # pysam already handles reverse-complementing for display
+                # The first base in query_sequence corresponds to the 5' end of the read
+                stats['five_prime_nt'][seq[0]] += 1
+                stats['three_prime_nt'][seq[-1]] += 1
 
             # Reference/chromosome distribution
             if read.reference_name:
@@ -113,15 +148,34 @@ def analyze_bam_basic(bam_file: Path, max_reads: int = 100000) -> Dict:
 
         samfile.close()
 
-        # Calculate derived statistics
-        if stats['mapped_reads'] > 0:
+        # Warn if analysis was truncated
+        stats['_truncated'] = read_count >= max_reads
+        if stats['_truncated']:
+            stats['_truncation_warning'] = (
+                f'Analysis based on first {max_reads:,} reads only. '
+                f'Increase max_reads for full analysis.'
+            )
+
+        # Calculate rates with safe division
+        if stats['total_reads'] > 0:
             stats['mapping_rate'] = 100 * stats['mapped_reads'] / stats['total_reads']
+        else:
+            stats['mapping_rate'] = 0.0
+
+        if stats['mapped_reads'] > 0:
             stats['unique_rate'] = 100 * stats['unique_reads'] / stats['mapped_reads']
             stats['strand_bias'] = abs(stats['forward_strand'] - stats['reverse_strand']) / stats['mapped_reads']
+            # Add strand bias QC assessment
+            if stats['strand_bias'] < 0.05:
+                stats['strand_bias_qc'] = 'PASS'
+            elif stats['strand_bias'] < 0.15:
+                stats['strand_bias_qc'] = 'WARNING - Moderate strand bias'
+            else:
+                stats['strand_bias_qc'] = 'FAIL - High strand bias, possible library prep issue'
         else:
-            stats['mapping_rate'] = 0
-            stats['unique_rate'] = 0
-            stats['strand_bias'] = 0
+            stats['unique_rate'] = 0.0
+            stats['strand_bias'] = 0.0
+            stats['strand_bias_qc'] = 'N/A - No mapped reads'
 
         # Length statistics
         if stats['lengths']:
@@ -162,7 +216,8 @@ def get_flagstat(bam_file: Path) -> Dict:
         result = subprocess.run(
             ['samtools', 'flagstat', str(bam_file)],
             capture_output=True,
-            text=True
+            text=True,
+            timeout=300
         )
 
         if result.returncode != 0:
@@ -188,6 +243,10 @@ def get_flagstat(bam_file: Path) -> Dict:
         stats['status'] = 'success'
         return stats
 
+    except FileNotFoundError:
+        return {'status': 'error', 'error': 'samtools not found. Install with: conda install -c bioconda samtools'}
+    except subprocess.TimeoutExpired:
+        return {'status': 'error', 'error': 'samtools flagstat timed out (>5 minutes)'}
     except Exception as e:
         return {'status': 'error', 'error': str(e)}
 
@@ -203,14 +262,16 @@ def analyze_rna_type_distribution(bam_file: Path, annotation_file: Optional[Path
     Returns:
         Dictionary with RNA type distribution
     """
+    if not PYSAM_AVAILABLE:
+        return {'status': 'error', 'error': 'pysam not installed'}
+
     # This is a placeholder - full implementation would use annotation file
     # For now, we'll categorize by read length as a proxy for RNA type
 
     length_categories = {
-        'miRNA-like (18-25nt)': 0,
-        'siRNA-like (20-24nt)': 0,
+        'miRNA-like (18-23nt)': 0,
         'piRNA-like (24-32nt)': 0,
-        'tRNA-fragment-like (28-36nt)': 0,
+        'tRNA-fragment-like (33-40nt)': 0,
         'Other': 0
     }
 
@@ -224,15 +285,14 @@ def analyze_rna_type_distribution(bam_file: Path, annotation_file: Optional[Path
 
             length = read.query_length
 
-            if 18 <= length <= 25:
-                length_categories['miRNA-like (18-25nt)'] += 1
-            if 20 <= length <= 24:
-                length_categories['siRNA-like (20-24nt)'] += 1
-            if 24 <= length <= 32:
+            # Exclusive categorization (priority-based, no double-counting)
+            if 18 <= length <= 23:
+                length_categories['miRNA-like (18-23nt)'] += 1
+            elif 24 <= length <= 32:
                 length_categories['piRNA-like (24-32nt)'] += 1
-            if 28 <= length <= 36:
-                length_categories['tRNA-fragment-like (28-36nt)'] += 1
-            if length < 18 or length > 36:
+            elif 33 <= length <= 40:
+                length_categories['tRNA-fragment-like (33-40nt)'] += 1
+            else:
                 length_categories['Other'] += 1
 
         samfile.close()
@@ -242,8 +302,12 @@ def analyze_rna_type_distribution(bam_file: Path, annotation_file: Optional[Path
             'categories': length_categories
         }
 
+    except FileNotFoundError:
+        return {'status': 'error', 'error': f'BAM file not found: {bam_file}'}
+    except ValueError as e:
+        return {'status': 'error', 'error': f'Invalid BAM file: {e}'}
     except Exception as e:
-        return {'status': 'error', 'error': str(e)}
+        return {'status': 'error', 'error': f'Unexpected error analyzing {bam_file}: {e}'}
 
 
 def render_post_alignment_qc_page():
@@ -356,8 +420,8 @@ def render_post_qc_input(alignment_bam_files: List):
             try:
                 subprocess.run(['samtools', 'index', str(file_path)],
                              capture_output=True, timeout=300)
-            except:
-                pass
+            except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.CalledProcessError) as e:
+                st.warning(f"Could not create BAM index: {e}")
 
         st.session_state.post_qc_bam_files = saved_files
 

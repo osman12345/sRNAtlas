@@ -369,6 +369,19 @@ def run_cutadapt(
     Returns:
         Dictionary with trimming statistics
     """
+    # Validate parameters
+    if min_length > max_length:
+        return {
+            'status': 'error',
+            'error': f'min_length ({min_length}) cannot exceed max_length ({max_length})'
+        }
+
+    if not adapter_3:
+        return {
+            'status': 'error',
+            'error': 'No 3\' adapter sequence provided'
+        }
+
     # Build cutadapt command
     cmd = [
         'cutadapt',
@@ -527,7 +540,10 @@ def batch_trim_files(
 
     for i, input_file in enumerate(input_files):
         if progress_callback:
-            progress_callback(i / len(input_files), f"Trimming {input_file.name}...")
+            try:
+                progress_callback(i / len(input_files), f"Trimming {input_file.name}...")
+            except Exception:
+                pass  # Don't let UI callback failure stop processing
 
         # Generate output filename
         stem = input_file.stem
@@ -810,6 +826,10 @@ def render_trimming_settings():
 
     st.session_state.trim_min_length = min_length
     st.session_state.trim_max_length = max_length
+
+    # Validate length range
+    if min_length > max_length:
+        st.error(f"Minimum length ({min_length}) cannot exceed maximum length ({max_length}). Please adjust.")
 
     # Quality settings
     st.markdown("### Quality Settings")

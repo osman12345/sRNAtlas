@@ -4,11 +4,111 @@ File handling utilities for sRNAtlas
 import os
 import gzip
 import tempfile
+import re
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple, Union
 import pandas as pd
 from Bio import SeqIO
 from loguru import logger
+
+
+# Allowed base directories for file operations
+_ALLOWED_BASE_DIRS = None
+
+def _get_allowed_dirs():
+    """Get allowed base directories lazily"""
+    global _ALLOWED_BASE_DIRS
+    if _ALLOWED_BASE_DIRS is None:
+        from config import config
+        _ALLOWED_BASE_DIRS = [
+            Path(config.paths.base_dir).resolve(),
+            Path(config.paths.data_dir).resolve(),
+            Path(config.paths.output_dir).resolve(),
+            Path(config.paths.reference_dir).resolve(),
+            Path(config.paths.jobs_dir).resolve(),
+            Path(tempfile.gettempdir()).resolve(),
+        ]
+    return _ALLOWED_BASE_DIRS
+
+
+def validate_safe_path(file_path: Union[str, Path], must_exist: bool = False) -> Path:
+    """
+    Validate a file path is safe (no traversal, within allowed directories).
+
+    Args:
+        file_path: Path to validate
+        must_exist: If True, also check the file exists
+
+    Returns:
+        Resolved Path object
+
+    Raises:
+        ValueError: If path is unsafe or invalid
+    """
+    file_path = Path(file_path).resolve()
+
+    # Check for null bytes (common injection vector)
+    if '\x00' in str(file_path):
+        raise ValueError("Path contains null bytes")
+
+    # Check path is under an allowed directory
+    allowed = _get_allowed_dirs()
+    if not any(str(file_path).startswith(str(d)) for d in allowed):
+        logger.warning(f"Path validation failed: '{file_path}' not in allowed directories")
+        raise ValueError(
+            f"Path '{file_path}' is outside allowed directories. "
+            f"Files must be under the project or temp directories."
+        )
+
+    if must_exist and not file_path.exists():
+        raise ValueError(f"File not found: {file_path}")
+
+    return file_path
+
+
+def sanitize_filename(filename: str) -> str:
+    """
+    Sanitize a filename to prevent injection.
+
+    Args:
+        filename: Raw filename
+
+    Returns:
+        Sanitized filename safe for filesystem use
+    """
+    # Remove path separators and null bytes
+    filename = filename.replace('/', '_').replace('\\', '_').replace('\x00', '')
+    # Remove shell metacharacters
+    filename = re.sub(r'[;&|`$(){}!<>]', '_', filename)
+    # Collapse multiple underscores
+    filename = re.sub(r'_+', '_', filename).strip('_')
+    # Ensure non-empty
+    if not filename:
+        filename = 'unnamed'
+    return filename
+
+
+def check_disk_space(path: Union[str, Path], required_mb: float = 100) -> Tuple[bool, float]:
+    """
+    Check if sufficient disk space is available.
+
+    Args:
+        path: Path to check (directory)
+        required_mb: Required free space in MB
+
+    Returns:
+        Tuple of (has_space, available_mb)
+    """
+    import shutil as _shutil
+    path = Path(path)
+    if not path.exists():
+        path = path.parent
+    try:
+        usage = _shutil.disk_usage(str(path))
+        available_mb = usage.free / (1024 * 1024)
+        return available_mb >= required_mb, available_mb
+    except OSError:
+        return True, -1  # Assume OK if we can't check
 
 
 def save_uploaded_file(uploaded_file, destination_dir: Path) -> Path:
@@ -45,10 +145,7 @@ def read_fastq_stats(fastq_file: Union[str, Path]) -> Dict:
     fastq_file = Path(fastq_file)
 
     # Determine if file is gzipped
-    if str(fastq_file).endswith('.gz'):
-        handle = gzip.open(fastq_file, 'rt')
-    else:
-        handle = open(fastq_file, 'r')
+    is_gzipped = str(fastq_file).endswith('.gz')
 
     read_count = 0
     total_length = 0
@@ -56,6 +153,7 @@ def read_fastq_stats(fastq_file: Union[str, Path]) -> Dict:
     quality_scores = []
 
     try:
+        handle = gzip.open(fastq_file, 'rt') if is_gzipped else open(fastq_file, 'r')
         for record in SeqIO.parse(handle, 'fastq'):
             read_count += 1
             length = len(record.seq)
@@ -143,6 +241,15 @@ def read_metadata(file_path: Union[str, Path]) -> pd.DataFrame:
         else:
             raise ValueError(f"Missing required columns: {missing}")
 
+    # Validate no duplicate sample IDs
+    if df['SampleID'].duplicated().any():
+        dupes = df['SampleID'][df['SampleID'].duplicated()].tolist()
+        raise ValueError(f"Duplicate sample IDs found: {dupes}")
+
+    # Validate no empty sample IDs
+    if df['SampleID'].isna().any() or (df['SampleID'].astype(str).str.strip() == '').any():
+        raise ValueError("Empty or missing sample IDs found in metadata")
+
     logger.info(f"Loaded metadata: {len(df)} samples")
     return df
 
@@ -166,12 +273,10 @@ def parse_fasta_annotations(fasta_file: Union[str, Path]) -> pd.DataFrame:
     annotations = []
 
     # Handle gzipped files
-    if str(fasta_file).endswith('.gz'):
-        handle = gzip.open(fasta_file, 'rt')
-    else:
-        handle = open(fasta_file, 'r')
+    is_gzipped = str(fasta_file).endswith('.gz')
 
     try:
+        handle = gzip.open(fasta_file, 'rt') if is_gzipped else open(fasta_file, 'r')
         for record in SeqIO.parse(handle, 'fasta'):
             header = record.id
             full_description = record.description  # Full header line

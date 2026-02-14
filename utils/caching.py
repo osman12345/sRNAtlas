@@ -13,12 +13,16 @@ def hash_dataframe(df: pd.DataFrame) -> str:
     """Create a hash string from a DataFrame for caching purposes"""
     if df is None:
         return "none"
-    # Use shape + column names + sample of data for efficient hashing
+    # Use shape + column names + sample of data + tail for efficient hashing
     hash_str = f"{df.shape}_{list(df.columns)}_{df.index.tolist()[:10]}"
     # Add sample of actual values for collision avoidance
     if len(df) > 0:
-        sample = df.head(5).to_string()
-        hash_str += f"_{sample}"
+        hash_str += f"_{df.head(5).to_string()}"
+        # Also include tail to detect changes at end of DataFrame
+        if len(df) > 5:
+            hash_str += f"_{df.tail(3).to_string()}"
+        # Include column dtypes for type-sensitive caching
+        hash_str += f"_{dict(df.dtypes)}"
     return hashlib.md5(hash_str.encode()).hexdigest()
 
 

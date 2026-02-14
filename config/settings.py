@@ -329,6 +329,56 @@ class Config:
             'enrichment': self.enrichment.__dict__,
         }
 
+    def validate(self) -> list:
+        """
+        Validate all configuration settings.
+
+        Returns:
+            List of validation error strings (empty if valid)
+        """
+        errors = []
+
+        # Validate alignment settings
+        if hasattr(self, 'alignment'):
+            a = self.alignment
+            if hasattr(a, 'mismatches') and not (0 <= a.mismatches <= 3):
+                errors.append(f"alignment.mismatches must be 0-3, got {a.mismatches}")
+            if hasattr(a, 'max_alignments') and a.max_alignments < 1:
+                errors.append(f"alignment.max_alignments must be >= 1, got {a.max_alignments}")
+
+        # Validate QC settings
+        if hasattr(self, 'qc'):
+            q = self.qc
+            if hasattr(q, 'min_length') and hasattr(q, 'max_length'):
+                if q.min_length > q.max_length:
+                    errors.append(f"qc.min_length ({q.min_length}) > qc.max_length ({q.max_length})")
+            if hasattr(q, 'min_length') and q.min_length < 1:
+                errors.append(f"qc.min_length must be >= 1, got {q.min_length}")
+
+        # Validate DESeq settings
+        if hasattr(self, 'deseq'):
+            d = self.deseq
+            if hasattr(d, 'padj_threshold') and not (0 < d.padj_threshold < 1):
+                errors.append(f"deseq.padj_threshold must be between 0 and 1, got {d.padj_threshold}")
+            if hasattr(d, 'lfc_threshold') and d.lfc_threshold < 0:
+                errors.append(f"deseq.lfc_threshold must be >= 0, got {d.lfc_threshold}")
+
+        # Validate counting settings
+        if hasattr(self, 'counting'):
+            c = self.counting
+            if hasattr(c, 'min_cpm') and c.min_cpm < 0:
+                errors.append(f"counting.min_cpm must be >= 0, got {c.min_cpm}")
+            if hasattr(c, 'min_samples_detected') and c.min_samples_detected < 1:
+                errors.append(f"counting.min_samples_detected must be >= 1, got {c.min_samples_detected}")
+
+        # Validate enrichment settings
+        if hasattr(self, 'enrichment'):
+            e = self.enrichment
+            if hasattr(e, 'enrichment_padj') and not (0 < e.enrichment_padj < 1):
+                errors.append(f"enrichment.enrichment_padj must be between 0 and 1, got {e.enrichment_padj}")
+
+        return errors
+
 
 # Create global config instance
 config = Config()

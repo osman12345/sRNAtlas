@@ -9,6 +9,19 @@ from .file_handlers import (
     create_project_structure
 )
 
+from .error_handling import (
+    ErrorClassifier,
+    DiagnosticError,
+    format_error_for_streamlit,
+    check_required_tools,
+)
+
+from .result import Result
+
+from .caching import hash_file, hash_dataframe
+
+from .provenance import ProvenanceTracker
+
 from .plotting import (
     plot_read_length_distribution,
     plot_quality_distribution,
@@ -110,4 +123,15 @@ __all__ = [
     'run_anova_analysis',
     'run_pairwise_comparisons',
     'render_multi_comparison_ui',
+    # Error handling & results
+    'ErrorClassifier',
+    'DiagnosticError',
+    'format_error_for_streamlit',
+    'check_required_tools',
+    'Result',
+    # Caching
+    'hash_file',
+    'hash_dataframe',
+    # Provenance
+    'ProvenanceTracker',
 ]

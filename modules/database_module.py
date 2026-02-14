@@ -19,6 +19,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config import config
+from utils.file_handlers import validate_safe_path, sanitize_filename
 
 
 # Alternative miRBase URLs (GitHub mirror and FTP)
@@ -138,6 +139,7 @@ def fetch_mirbase_sequences(species_code: str, seq_type: str = "mature") -> Dict
     ]
 
     sequences = {}
+    failed_urls = []
 
     for url in urls_to_try:
         try:
@@ -183,12 +185,23 @@ def fetch_mirbase_sequences(species_code: str, seq_type: str = "mature") -> Dict
                     'source': url
                 }
 
+        except requests.exceptions.Timeout:
+            failed_urls.append((url, "Connection timed out"))
+            continue
+        except requests.exceptions.ConnectionError:
+            failed_urls.append((url, "Connection refused or network error"))
+            continue
         except Exception as e:
+            failed_urls.append((url, str(e)))
             continue
 
+    error_details = '; '.join([f'{url}: {err}' for url, err in failed_urls]) if failed_urls else 'Unknown error'
     return {
         'status': 'error',
-        'error': 'Could not download from any miRBase source'
+        'error': f'Could not download from any miRBase source. Tried {len(urls_to_try)} URLs.',
+        'details': error_details,
+        'urls_tried': [u for u, _ in failed_urls],
+        'recommendation': 'Check your internet connection or try again later. Visit https://mirbase.org to download manually.'
     }
 
 
@@ -440,9 +453,26 @@ def fetch_rnacentral_sequences(
                     break
                 time.sleep(3)
                 continue
+            except requests.exceptions.ConnectionError as e:
+                consecutive_failures += 1
+                if consecutive_failures >= 3:
+                    if progress_callback:
+                        progress_callback(None, f"Network error after {total_fetched} sequences: {str(e)[:50]}")
+                    break
+                time.sleep(3)
+                continue
+            except json.JSONDecodeError as e:
+                consecutive_failures += 1
+                if consecutive_failures >= 3:
+                    if progress_callback:
+                        progress_callback(None, f"Invalid API response after {total_fetched} sequences")
+                    break
+                continue
             except Exception as e:
                 consecutive_failures += 1
                 if consecutive_failures >= 3:
+                    if progress_callback:
+                        progress_callback(None, f"Error after {total_fetched} sequences: {str(e)[:50]}")
                     break
                 continue
 
@@ -565,9 +595,26 @@ def fetch_rnacentral_via_text_search(
                     break
                 time.sleep(3)
                 continue
+            except requests.exceptions.ConnectionError as e:
+                consecutive_failures += 1
+                if consecutive_failures >= 3:
+                    if progress_callback:
+                        progress_callback(None, f"Network error after {total_fetched} sequences: {str(e)[:50]}")
+                    break
+                time.sleep(3)
+                continue
+            except json.JSONDecodeError as e:
+                consecutive_failures += 1
+                if consecutive_failures >= 3:
+                    if progress_callback:
+                        progress_callback(None, f"Invalid API response after {total_fetched} sequences")
+                    break
+                continue
             except Exception as e:
                 consecutive_failures += 1
                 if consecutive_failures >= 3:
+                    if progress_callback:
+                        progress_callback(None, f"Error after {total_fetched} sequences: {str(e)[:50]}")
                     break
                 continue
 
@@ -589,9 +636,24 @@ def fetch_rnacentral_via_text_search(
 
 def save_sequences_to_fasta(sequences: Dict[str, str], output_file: Path) -> Dict:
     """Save sequences dictionary to FASTA file"""
+    try:
+        output_file = validate_safe_path(output_file)
+    except ValueError as e:
+        return {'status': 'error', 'error': f'Invalid output path: {e}'}
+
     output_file.parent.mkdir(parents=True, exist_ok=True)
 
     try:
+        # Validate sequences contain only valid nucleotide characters
+        valid_chars = set('ATCGNatcgnURYSWKMBDHVuryswkmbdhv')
+        for seq_id, sequence in sequences.items():
+            invalid = set(sequence) - valid_chars
+            if invalid:
+                return {
+                    'status': 'error',
+                    'error': f'Sequence {seq_id} contains invalid characters: {invalid}'
+                }
+
         with open(output_file, 'w') as f:
             for seq_id, sequence in sequences.items():
                 f.write(f">{seq_id}\n{sequence}\n")
@@ -617,6 +679,12 @@ def build_bowtie_index(
     """
     Build Bowtie index from FASTA file
     """
+    try:
+        fasta_file = validate_safe_path(fasta_file, must_exist=True)
+        index_prefix = validate_safe_path(index_prefix.parent) / index_prefix.name
+    except ValueError as e:
+        return {'status': 'error', 'error': f'Invalid path: {e}'}
+
     try:
         if progress_callback:
             progress_callback(0.1, "Building Bowtie index...")

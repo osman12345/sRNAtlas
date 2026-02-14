@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config import config
 from utils.error_handling import ErrorClassifier, format_error_for_streamlit
+from utils.file_handlers import validate_safe_path, sanitize_filename
 
 
 def check_bowtie_installed() -> bool:
@@ -111,6 +112,10 @@ def build_bowtie_index(fasta_file: Path, output_prefix: Path) -> Dict:
     Returns:
         Dictionary with build status and info
     """
+    # Validate paths
+    fasta_file = validate_safe_path(fasta_file, must_exist=True)
+    output_prefix = validate_safe_path(output_prefix.parent) / output_prefix.name
+
     cmd = [
         'bowtie-build',
         '--threads', str(config.alignment.threads),
@@ -165,6 +170,11 @@ def run_alignment(
     """
     if settings is None:
         settings = config.alignment
+
+    # Validate input paths
+    fastq_file = validate_safe_path(fastq_file, must_exist=True)
+    index_prefix = validate_safe_path(index_prefix)
+    output_dir = validate_safe_path(output_dir)
 
     # Extract sample name
     sample_name = fastq_file.stem

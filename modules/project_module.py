@@ -19,6 +19,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config import config
+from utils.file_handlers import validate_safe_path, sanitize_filename
 
 
 # Project file format version
@@ -60,19 +61,38 @@ SAVEABLE_KEYS = [
 
 
 def serialize_dataframe(df: pd.DataFrame) -> Dict:
-    """Serialize DataFrame to JSON-compatible format"""
+    """Serialize DataFrame to JSON-compatible format with type preservation"""
     return {
         'type': 'dataframe',
         'data': df.to_json(orient='split', date_format='iso'),
-        'index_name': df.index.name
+        'index_name': df.index.name,
+        'dtypes': {col: str(dtype) for col, dtype in df.dtypes.items()},
+        'index_dtype': str(df.index.dtype)
     }
 
 
 def deserialize_dataframe(data: Dict) -> pd.DataFrame:
-    """Deserialize DataFrame from JSON format"""
+    """Deserialize DataFrame from JSON format with type preservation"""
     df = pd.read_json(io.StringIO(data['data']), orient='split')
     if data.get('index_name'):
         df.index.name = data['index_name']
+
+    # Restore column dtypes
+    if 'dtypes' in data:
+        for col, dtype_str in data['dtypes'].items():
+            if col in df.columns:
+                try:
+                    df[col] = df[col].astype(dtype_str)
+                except (ValueError, TypeError):
+                    pass  # Keep inferred type if conversion fails
+
+    # Restore index dtype
+    if 'index_dtype' in data:
+        try:
+            df.index = df.index.astype(data['index_dtype'])
+        except (ValueError, TypeError):
+            pass
+
     return df
 
 
@@ -86,10 +106,12 @@ def serialize_value(value: Any) -> Any:
             'data': value.tolist(),
             'dtype': str(value.dtype)
         }
-    elif isinstance(value, (np.int64, np.int32)):
+    elif isinstance(value, (np.integer,)):
         return int(value)
-    elif isinstance(value, (np.float64, np.float32)):
+    elif isinstance(value, (np.floating,)):
         return float(value)
+    elif isinstance(value, np.bool_):
+        return bool(value)
     elif isinstance(value, dict):
         return {
             'type': 'dict',
@@ -187,6 +209,21 @@ def save_project_to_file(
         if not filepath.suffix:
             filepath = filepath.with_suffix('.srna')
 
+        # Validate path is within allowed directories
+        projects_dir = Path(config.paths.output_dir).resolve()
+        filepath = filepath.resolve()
+        if not str(filepath).startswith(str(projects_dir)):
+            # If not in output dir, check if in temp
+            import tempfile
+            temp_dir = Path(tempfile.gettempdir()).resolve()
+            if not str(filepath).startswith(str(temp_dir)):
+                return {
+                    'status': 'error',
+                    'error': f'Save path must be under the output directory ({projects_dir}) or temp directory'
+                }
+
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+
         with open(filepath, 'w') as f:
             json.dump(snapshot, f, indent=2, default=str)
 
@@ -215,6 +252,23 @@ def load_project_from_file(filepath: Path) -> Dict:
     """
     try:
         filepath = Path(filepath)
+
+        # Validate path
+        filepath = filepath.resolve()
+        if not filepath.exists():
+            return {
+                'status': 'error',
+                'error': f'Project file not found: {filepath}'
+            }
+
+        # Validate file size (prevent loading huge malicious files)
+        max_size_mb = 500
+        file_size_mb = filepath.stat().st_size / (1024 * 1024)
+        if file_size_mb > max_size_mb:
+            return {
+                'status': 'error',
+                'error': f'Project file too large ({file_size_mb:.1f} MB, max {max_size_mb} MB)'
+            }
 
         with open(filepath, 'r') as f:
             snapshot = json.load(f)
@@ -616,7 +670,7 @@ def render_save_project():
     # Generate filename - handle None or empty project_name
     if not project_name:
         project_name = "My_Analysis"
-    safe_name = "".join(c if c.isalnum() or c in '-_' else '_' for c in project_name)
+    safe_name = sanitize_filename(project_name)
     default_filename = f"{safe_name}_{datetime.now().strftime('%Y%m%d')}.srna"
 
     col1, col2 = st.columns([3, 1])
@@ -734,7 +788,7 @@ def render_export_project():
             )
 
         project_name = st.session_state.get('project_name', 'analysis')
-        safe_name = "".join(c if c.isalnum() or c in '-_' else '_' for c in project_name)
+        safe_name = sanitize_filename(project_name)
 
         st.download_button(
             "📥 Download ZIP Archive",

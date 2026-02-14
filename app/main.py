@@ -99,6 +99,32 @@ def init_session_state():
         'de_results': None,
         'enrichment_results': None,
 
+        # Post-alignment QC
+        'post_qc_results': None,
+        'post_qc_bam_files': [],
+
+        # Alignment outputs
+        'alignment_bam_files': [],
+        'alignment_output_dir': None,
+
+        # Trimming outputs
+        'trim_output_files': [],
+        'trim_stats': None,
+        'trim_output_dir': None,
+        'trim_input_files': None,
+
+        # Project files
+        'project_fastq_files': [],
+        'project_fastq_names': [],
+        'project_fastq_dir': None,
+
+        # Batch processing
+        'batch_processor': None,
+
+        # Annotated counts
+        'annotated_counts': None,
+        'sample_stats': None,
+
         # Job tracking
         'current_job': None,
         'job_history': [],
@@ -117,6 +143,13 @@ def init_session_state():
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
+
+    # Validate configuration on first run
+    if 'config_validated' not in st.session_state:
+        errors = config.validate() if hasattr(config, 'validate') else []
+        if errors:
+            st.session_state.config_warnings = errors
+        st.session_state.config_validated = True
 
 
 def render_sidebar():
@@ -330,6 +363,11 @@ def main():
     """Main application entry point"""
     # Initialize session state
     init_session_state()
+
+    # Show config warnings if any
+    if st.session_state.get('config_warnings'):
+        for warning in st.session_state.config_warnings:
+            st.sidebar.warning(f"Config: {warning}")
 
     # Render sidebar and get selection
     selected = render_sidebar()

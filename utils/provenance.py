@@ -164,7 +164,9 @@ def get_tool_version(tool_name: str) -> ToolVersion:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
         output = result.stdout.strip() or result.stderr.strip()
         # Get first line which usually contains version
-        version_line = output.split('\n')[0] if output else "UNKNOWN"
+        version_line = output.split('\n')[0].strip() if output else "UNKNOWN"
+        if not version_line:
+            version_line = "UNKNOWN"
         return ToolVersion(
             name=tool_name,
             version=version_line,

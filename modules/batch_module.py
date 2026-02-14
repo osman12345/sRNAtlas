@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import List, Dict, Optional, Tuple, Callable
 from datetime import datetime
 import json
+import json as json_module
 import time
 import threading
 import queue
@@ -40,9 +41,9 @@ class BatchJob:
     completed_at: Optional[str] = None
     progress: float = 0.0
     message: str = ""
-    parameters: Dict = None
-    input_files: List[str] = None
-    output_files: List[str] = None
+    parameters: Optional[Dict] = None
+    input_files: Optional[List[str]] = None
+    output_files: Optional[List[str]] = None
     error: Optional[str] = None
     results: Optional[Dict] = None
 
@@ -55,6 +56,7 @@ class BatchProcessor:
         self.job_queue = queue.Queue()
         self.is_processing = False
         self._load_jobs()
+        self._lock = threading.Lock()
 
     def _load_jobs(self):
         """Load jobs from storage"""
@@ -70,7 +72,7 @@ class BatchProcessor:
                 pass
 
     def _save_jobs(self):
-        """Save jobs to storage"""
+        """Save jobs to storage (thread-safe)"""
         jobs_file = Path(config.paths.output_dir) / "batch_jobs.json"
         jobs_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -80,8 +82,9 @@ class BatchProcessor:
             job_dict['status'] = job.status.value
             data[job_id] = job_dict
 
-        with open(jobs_file, 'w') as f:
-            json.dump(data, f, indent=2)
+        with self._lock:
+            with open(jobs_file, 'w') as f:
+                json.dump(data, f, indent=2)
 
     def create_job(
         self,
@@ -330,6 +333,17 @@ Treatment_3,/path/to/treatment_3.fastq.gz,Treatment,3"""
         min_length = st.slider("Min Length", 10, 30, 18)
         max_length = st.slider("Max Length", 25, 50, 35)
 
+    # Validate trimming parameters
+    if min_length > max_length:
+        st.error(f"⚠️ Min length ({min_length}) cannot be greater than max length ({max_length}). Please adjust.")
+
+    # Validate adapter sequence
+    if adapter_3:
+        valid_nucleotides = set('ATCGNatcgnURYSWKMBDHVuryswkmbdhv')
+        invalid_chars = set(adapter_3) - valid_nucleotides
+        if invalid_chars:
+            st.error(f"⚠️ Adapter contains invalid nucleotide characters: {invalid_chars}")
+
     with st.expander("Alignment Parameters"):
         mismatches = st.slider("Mismatches", 0, 3, 1)
         multi_alignments = st.slider("Max Multi-alignments", 1, 50, 10)
@@ -357,6 +371,17 @@ Treatment_3,/path/to/treatment_3.fastq.gz,Treatment,3"""
         if not reference:
             st.error("Please specify a reference database")
             return
+
+        # Validate parameters before submission
+        if min_length > max_length:
+            st.error(f"Invalid parameters: min_length ({min_length}) > max_length ({max_length})")
+            return
+
+        if adapter_3:
+            valid_nucleotides = set('ATCGNatcgnURYSWKMBDHVuryswkmbdhv')
+            if set(adapter_3) - valid_nucleotides:
+                st.error("Invalid adapter sequence. Only nucleotide characters are allowed.")
+                return
 
         # Create pipeline config
         pipeline_config = create_pipeline_config(
@@ -417,7 +442,14 @@ def render_trimming_batch_config(processor: BatchProcessor):
         with col2:
             max_length = st.slider("Max Length", 25, 50, 35)
 
+        # Validate parameters
+        if min_length > max_length:
+            st.error(f"Min length ({min_length}) cannot exceed max length ({max_length})")
+
         if st.button("🚀 Submit Trimming Job", type="primary"):
+            if min_length > max_length:
+                st.error("Fix: min_length must be <= max_length")
+                return
             job = processor.create_job(
                 job_type='trimming',
                 parameters={
